@@ -1,0 +1,34 @@
+{
+  "name": "nhs-jobs-alerts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "scrape:test": "tsx src/scripts/testScrapers.ts",
+    "db:migrate": "tsx src/scripts/migrate.ts",
+    "whatsapp:test": "tsx src/scripts/testWhatsApp.ts"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0",
+    "undici": "^6.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.10",
+    "@types/qrcode-terminal": "^0.12.2",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
