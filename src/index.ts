@@ -6,14 +6,16 @@ import { startWhatsAppClient } from "./whatsapp/client.js";
 
 validateRuntimeConfig();
 
-if (!config.dryRunSends) {
+if (!config.dryRunSends && !config.disableWhatsAppSends) {
   await startWhatsAppClient();
 } else {
-  logger.warn("DRY_RUN_SENDS=true; WhatsApp messages will not be sent");
+  logger.warn("WhatsApp messages are disabled for this runtime");
 }
 
 startScheduler();
-void runScrapeCycle();
+void runScrapeCycle().catch((error) => {
+  logger.error({ error }, "initial scrape cycle failed");
+});
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "shutting down");

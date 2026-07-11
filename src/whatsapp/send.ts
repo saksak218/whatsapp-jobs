@@ -31,15 +31,15 @@ export function formatJobAlert(job: NormalizedJob): string {
   return lines.filter((line): line is string => line !== undefined).join("\n");
 }
 
-export async function sendJobAlert(job: NormalizedJob): Promise<void> {
+export async function sendJobAlert(job: NormalizedJob): Promise<boolean> {
   const message = formatJobAlert(job);
 
-  if (config.dryRunSends) {
+  if (config.dryRunSends || config.disableWhatsAppSends) {
     logger.info(
       { job_id: job.job_id, message },
       "dry-run WhatsApp send skipped",
     );
-    return;
+    return false;
   }
 
   const groupJid = await resolveWhatsAppGroupJid();
@@ -49,4 +49,5 @@ export async function sendJobAlert(job: NormalizedJob): Promise<void> {
     { job_id: job.job_id, recipient: groupJid },
     "WhatsApp job alert sent",
   );
+  return true;
 }

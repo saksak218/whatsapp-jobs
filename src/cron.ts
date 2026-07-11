@@ -13,10 +13,24 @@ import { sendJobAlert } from "./whatsapp/send.js";
 
 let running = false;
 
-export async function runScrapeCycle(): Promise<void> {
+export interface ScrapeCycleResult {
+  skipped: boolean;
+  scraped: number;
+  newJobs: number;
+  pendingJobs: number;
+  sentJobs: number;
+}
+
+export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
   if (running) {
     logger.warn("previous scrape cycle still running; skipping overlap");
-    return;
+    return {
+      skipped: true,
+      scraped: 0,
+      newJobs: 0,
+      pendingJobs: 0,
+      sentJobs: 0,
+    };
   }
 
   running = true;
@@ -38,12 +52,22 @@ export async function runScrapeCycle(): Promise<void> {
 
     if (jobsToSend.length === 0) {
       logger.warn("no new or pending jobs found; skipping WhatsApp send");
-      return;
+      return {
+        skipped: false,
+        scraped: jobs.length,
+        newJobs: newJobs.length,
+        pendingJobs: pendingJobs.length,
+        sentJobs: 0,
+      };
     }
 
+    let sentJobs = 0;
     for (const job of jobsToSend) {
-      await sendJobAlert(job);
+      const sent = await sendJobAlert(job);
+      if (!sent) continue;
+
       await markJobSent(job.job_id);
+      sentJobs += 1;
 
       const delayMs = randomDelay(config.sendMinDelayMs, config.sendMaxDelayMs);
       logger.info({ delayMs }, "waiting before next WhatsApp send");
@@ -51,8 +75,16 @@ export async function runScrapeCycle(): Promise<void> {
     }
 
     logger.info("scrape cycle finished");
+    return {
+      skipped: false,
+      scraped: jobs.length,
+      newJobs: newJobs.length,
+      pendingJobs: pendingJobs.length,
+      sentJobs,
+    };
   } catch (error) {
     logger.error({ error }, "scrape cycle failed");
+    throw error;
   } finally {
     running = false;
   }
@@ -60,7 +92,9 @@ export async function runScrapeCycle(): Promise<void> {
 
 export function startScheduler(): void {
   cron.schedule(config.scrapeIntervalCron, () => {
-    void runScrapeCycle();
+    void runScrapeCycle().catch((error) => {
+      logger.error({ error }, "scheduled scrape cycle failed");
+    });
   });
 
   logger.info({ cron: config.scrapeIntervalCron }, "scheduler started");
