@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import {
   absoluteUrl,
   buildJobId,
-  fetchHtml,
+  fetchFirstHtml,
   filterMatchingJobs,
   loadHtml,
   logScraperFailure,
@@ -13,9 +13,9 @@ import type { NormalizedJob } from "./types.js";
 const source = "healthjobsuk" as const;
 const baseUrl = "https://www.healthjobsuk.com";
 
-function buildSearchUrl(): string {
+function buildMainSearchUrl(keyword: string): string {
   const url = new URL("/job_list", baseUrl);
-  url.searchParams.set("JobSearch_q", config.searchKeyword);
+  url.searchParams.set("JobSearch_q", keyword);
   url.searchParams.set("JobSearch_d", "");
   url.searchParams.set("JobSearch_g", "255");
   url.searchParams.set("JobSearch_re", "*POST");
@@ -25,10 +25,26 @@ function buildSearchUrl(): string {
   return url.toString();
 }
 
+function buildSearchUrls(keyword: string): string[] {
+  const simpleSearch = new URL("/job_list", baseUrl);
+  simpleSearch.searchParams.set("JobSearch_q", keyword);
+  simpleSearch.searchParams.set("JobSearch_Submit", "Search");
+  simpleSearch.searchParams.set("_tr", "JobSearch");
+
+  const legacySearch = new URL("/job_list", baseUrl);
+  legacySearch.searchParams.set("q", keyword);
+
+  return [
+    buildMainSearchUrl(keyword),
+    simpleSearch.toString(),
+    legacySearch.toString(),
+  ];
+}
+
 export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
   try {
-    const searchUrl = buildSearchUrl();
-    const $ = loadHtml(await fetchHtml(searchUrl));
+    const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(config.searchKeyword));
+    const $ = loadHtml(html);
     const jobs: NormalizedJob[] = [];
 
     $("a[href*='/job/'], a[href*='job_id='], a[href*='/vacancy/']").each((index, element) => {

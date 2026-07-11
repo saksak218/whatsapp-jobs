@@ -1,12 +1,13 @@
-import { config, requireWhatsAppGroupJid } from "../config.js";
+import { config } from "../config.js";
 import { startWhatsAppClient } from "../whatsapp/client.js";
 import { sendJobAlert } from "../whatsapp/send.js";
 
 if (config.dryRunSends) {
-  throw new Error("Set DRY_RUN_SENDS=false to send a real WhatsApp test message");
+  throw new Error(
+    "Set DRY_RUN_SENDS=false to send a real WhatsApp test message",
+  );
 }
 
-requireWhatsAppGroupJid();
 await startWhatsAppClient();
 
 await sendJobAlert({
@@ -15,5 +16,5 @@ await sendJobAlert({
   title: "Manual test job alert",
   employer: "Test NHS Trust",
   location: "Test location",
-  url: "https://www.jobs.nhs.uk/"
+  url: "https://www.jobs.nhs.uk/",
 });

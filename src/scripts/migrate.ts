@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pool, closeDatabase } from "../db/client.js";
+import { client, closeDatabase } from "../db/client.js";
 import { logger } from "../utils/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,9 +12,9 @@ const files = (await readdir(migrationsDir))
   .sort((a, b) => a.localeCompare(b));
 
 for (const file of files) {
-  const sql = await readFile(path.join(migrationsDir, file), "utf8");
+  const sqlText = await readFile(path.join(migrationsDir, file), "utf8");
   logger.info({ file }, "running migration");
-  await pool.query(sql);
+  await client.unsafe(sqlText);
 }
 
 await closeDatabase();

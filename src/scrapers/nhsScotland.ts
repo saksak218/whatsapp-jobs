@@ -1,9 +1,10 @@
 import { config } from "../config.js";
+import { parseUkDate } from "../utils/dates.js";
 import {
   absoluteUrl,
   buildJobId,
-  fetchHtml,
   filterMatchingJobs,
+  fetchFirstHtml,
   loadHtml,
   logScraperFailure,
   text
@@ -13,43 +14,73 @@ import type { NormalizedJob } from "./types.js";
 const source = "nhs-scotland" as const;
 const baseUrl = "https://apply.jobs.scot.nhs.uk";
 
-function buildSearchUrl(): string {
-  const url = new URL("/Home/Job", baseUrl);
-  url.searchParams.set("keywords", config.searchKeyword);
-  return url.toString();
+function buildSearchUrls(keyword: string): string[] {
+  const jobCardUrl = new URL("/Home/_JobCard", baseUrl);
+  jobCardUrl.searchParams.set("what", keyword);
+
+  const keywordJobCardUrl = new URL("/Home/_JobCard", baseUrl);
+  keywordJobCardUrl.searchParams.set("keywords", keyword);
+
+  const fullPageUrl = new URL("/Home/Job", baseUrl);
+  fullPageUrl.searchParams.set("keywords", keyword);
+
+  return [
+    jobCardUrl.toString(),
+    keywordJobCardUrl.toString(),
+    fullPageUrl.toString(),
+  ];
+}
+
+function searchKeywords(): string[] {
+  return [
+    config.searchKeyword,
+    ...config.nhsScotlandFallbackKeywords,
+  ].filter((keyword, index, keywords) => keywords.indexOf(keyword) === index);
 }
 
 export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
   try {
-    const searchUrl = buildSearchUrl();
-    const $ = loadHtml(await fetchHtml(searchUrl));
-    const jobs: NormalizedJob[] = [];
+    for (const keyword of searchKeywords()) {
+      const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
+      const $ = loadHtml(html);
+      const jobs: NormalizedJob[] = [];
 
-    $("a[href*='/Job/'], a[href*='JobId='], a[href*='jobId=']").each((index, element) => {
-      const link = $(element);
-      const href = link.attr("href");
-      const title = text(link);
-      if (!href || !title || title.length < 4) return;
+      $(".job-card").each((index, element) => {
+        const card = $(element);
+        const link = card.find(".job-row__details a").first();
+        const href = link.attr("href");
+        const title = text(link);
+        if (!href || !title || title.length < 4) return;
 
-      const url = absoluteUrl(href, baseUrl);
-      const parsed = new URL(url);
-      const queryId = parsed.searchParams.get("JobId") ?? parsed.searchParams.get("jobId");
-      const container = link.closest("li, article, tr, div");
-      const containerText = text(container);
+        const url = absoluteUrl(href, baseUrl);
+        const parsed = new URL(url);
+        const queryId = parsed.searchParams.get("JobId") ?? parsed.searchParams.get("jobId");
 
-      jobs.push({
-        job_id: queryId ? `${source}:${queryId}` : buildJobId(source, url, String(index)),
-        source,
-        title,
-        employer: container.find(".employer, .organisation, .organization, .board").first().text().trim() || undefined,
-        location: container.find(".location, .region").first().text().trim() || undefined,
-        salary: /Salary:\s*([^]*?)(?=Closing|Location|$)/i.exec(containerText)?.[1]?.trim(),
-        url,
-        raw: { searchUrl }
+        const employer = card.find(".jobdetailsitem.school").text().replace("Employer (NHS Board):", "").trim() || undefined;
+        const location = card.find(".jobdetailsitem.location").text().replace("Location:", "").trim() || undefined;
+        const salary = card.find(".jobdetailsitem.salary").text().replace("Salary:", "").trim() || undefined;
+        const closingText = card.find(".jobdetailsitem.closingdate").text().replace("Closing date:", "").trim() || undefined;
+        const postedText = card.find(".jobdetailsitem.livedate").text().replace("Live date:", "").trim() || undefined;
+
+        jobs.push({
+          job_id: queryId ? `${source}:${queryId}` : buildJobId(source, url, String(index)),
+          source,
+          title,
+          employer,
+          location,
+          salary,
+          url,
+          posted_at: parseUkDate(postedText),
+          closing_at: parseUkDate(closingText),
+          raw: { searchUrl, keyword }
+        });
       });
-    });
 
-    return filterMatchingJobs(jobs, config.searchKeyword);
+      const matchingJobs = filterMatchingJobs(jobs, keyword);
+      if (matchingJobs.length > 0) return matchingJobs;
+    }
+
+    return [];
   } catch (error) {
     logScraperFailure(source, error);
     return [];

@@ -27,7 +27,7 @@ The user wants a completely free or almost-free build. Prefer free-tier
 infrastructure and open-source libraries:
 
 - Oracle Cloud Always Free VM, a spare PC, or another always-on free/cheap host.
-- Neon/Supabase/free Postgres, or Postgres on the same VM.
+- Neon/free Postgres, or Postgres on the same VM.
 - Baileys for WhatsApp Web style sending.
 - No paid Twilio/WhatsApp Business messaging path.
 
@@ -101,8 +101,8 @@ This is unofficial API territory. Keep the risks visible:
 
 ## Database Rules
 
-The database is standard Postgres. `DATABASE_URL` may point at Neon, Supabase,
-or any normal Postgres instance. Do not hardcode provider-specific behavior.
+The database is standard Postgres. `DATABASE_URL` may point at Neon or any
+normal Postgres instance. Do not hardcode provider-specific behavior.
 
 The core table is `seen_jobs`. The unique `job_id` is the dedupe mechanism.
 Use an atomic insert:
