@@ -1,6 +1,11 @@
 import cron from "node-cron";
 import { config } from "./config.js";
-import { dedupeAndInsert, markJobSent } from "./dedupe.js";
+import {
+  dedupeAndInsert,
+  getUnsentJobs,
+  markJobSent,
+  mergeJobsForDelivery,
+} from "./dedupe.js";
 import { scrapeAll } from "./scrapers/index.js";
 import { logger } from "./utils/logger.js";
 import { randomDelay, sleep } from "./utils/sleep.js";
@@ -20,9 +25,23 @@ export async function runScrapeCycle(): Promise<void> {
     logger.info("scrape cycle started");
     const jobs = await scrapeAll();
     const newJobs = await dedupeAndInsert(jobs);
-    logger.info({ scraped: jobs.length, newJobs: newJobs.length }, "dedupe completed");
+    const pendingJobs = await getUnsentJobs();
+    const jobsToSend = mergeJobsForDelivery(newJobs, pendingJobs);
+    logger.info(
+      {
+        scraped: jobs.length,
+        newJobs: newJobs.length,
+        pendingJobs: pendingJobs.length,
+      },
+      "dedupe completed",
+    );
 
-    for (const job of newJobs) {
+    if (jobsToSend.length === 0) {
+      logger.warn("no new or pending jobs found; skipping WhatsApp send");
+      return;
+    }
+
+    for (const job of jobsToSend) {
       await sendJobAlert(job);
       await markJobSent(job.job_id);
 

@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import {
   absoluteUrl,
   buildJobId,
-  fetchHtml,
+  fetchFirstHtml,
   filterMatchingJobs,
   loadHtml,
   logScraperFailure,
@@ -13,16 +13,32 @@ import type { NormalizedJob } from "./types.js";
 const source = "nhsjobs-com" as const;
 const baseUrl = "https://www.nhsjobs.com";
 
-function buildSearchUrl(): string {
+function slugifyKeyword(keyword: string): string {
+  return keyword
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function buildSearchUrls(keyword: string): string[] {
   const url = new URL("/search", baseUrl);
-  url.searchParams.set("q", config.searchKeyword);
-  return url.toString();
+  url.searchParams.set("q", keyword);
+
+  const keywordUrl = new URL("/search", baseUrl);
+  keywordUrl.searchParams.set("keywords", keyword);
+
+  return [
+    url.toString(),
+    keywordUrl.toString(),
+    new URL(`/search-jobs/${slugifyKeyword(keyword)}`, baseUrl).toString(),
+  ];
 }
 
 export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
   try {
-    const searchUrl = buildSearchUrl();
-    const $ = loadHtml(await fetchHtml(searchUrl));
+    const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(config.searchKeyword));
+    const $ = loadHtml(html);
     const jobs: NormalizedJob[] = [];
 
     $("a[href*='/job/']").each((index, element) => {

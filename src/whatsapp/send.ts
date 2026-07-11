@@ -1,13 +1,13 @@
-import { config, requireWhatsAppGroupJid } from "../config.js";
+import { config } from "../config.js";
 import type { NormalizedJob } from "../scrapers/types.js";
 import { formatDate } from "../utils/dates.js";
 import { logger } from "../utils/logger.js";
-import { getWhatsAppClient } from "./client.js";
+import { resolveWhatsAppGroupJid, startWhatsAppClient } from "./client.js";
 
 const templates = [
   "New clinical fellow job",
   "Clinical fellow vacancy found",
-  "New NHS job alert"
+  "New NHS job alert",
 ];
 
 function pickTemplate(jobId: string): string {
@@ -25,7 +25,7 @@ export function formatJobAlert(job: NormalizedJob): string {
     job.salary ? `Salary: ${job.salary}` : undefined,
     job.closing_at ? `Closing: ${formatDate(job.closing_at)}` : undefined,
     "",
-    job.url
+    job.url,
   ];
 
   return lines.filter((line): line is string => line !== undefined).join("\n");
@@ -35,12 +35,18 @@ export async function sendJobAlert(job: NormalizedJob): Promise<void> {
   const message = formatJobAlert(job);
 
   if (config.dryRunSends) {
-    logger.info({ job_id: job.job_id, message }, "dry-run WhatsApp send skipped");
+    logger.info(
+      { job_id: job.job_id, message },
+      "dry-run WhatsApp send skipped",
+    );
     return;
   }
 
-  const groupJid = requireWhatsAppGroupJid();
-  const sock = getWhatsAppClient();
+  const groupJid = await resolveWhatsAppGroupJid();
+  const sock = await startWhatsAppClient();
   await sock.sendMessage(groupJid, { text: message });
-  logger.info({ job_id: job.job_id }, "WhatsApp job alert sent");
+  logger.info(
+    { job_id: job.job_id, recipient: groupJid },
+    "WhatsApp job alert sent",
+  );
 }

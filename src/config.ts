@@ -23,10 +23,26 @@ function envBool(name: string, fallback: boolean): boolean {
   return raw ? trueValues.has(raw.toLowerCase()) : fallback;
 }
 
+function envList(name: string, fallback: string[]): string[] {
+  const raw = env(name);
+  if (!raw) return fallback;
+
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export const config = {
   databaseUrl: env("DATABASE_URL"),
   whatsappGroupJid: env("WHATSAPP_GROUP_JID"),
+  whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
   searchKeyword: env("SEARCH_KEYWORD", "junior clinical fellow"),
+  nhsScotlandFallbackKeywords: envList("NHS_SCOTLAND_FALLBACK_KEYWORDS", [
+    "clinical fellow",
+    "fellow",
+  ]),
+  jobsNhsUkMaxPages: envInt("JOBS_NHS_UK_MAX_PAGES", 10),
   scrapeIntervalCron: env("SCRAPE_INTERVAL_CRON", "*/10 * * * *"),
   logLevel: env("LOG_LEVEL", "info"),
   sendMinDelayMs: envInt("SEND_MIN_DELAY_MS", 8000),
@@ -36,8 +52,8 @@ export const config = {
     healthJobsUk: envBool("ENABLE_HEALTHJOBSUK", true),
     jobsNhsUk: envBool("ENABLE_JOBS_NHS_UK", true),
     nhsScotland: envBool("ENABLE_NHS_SCOTLAND", true),
-    nhsJobsCom: envBool("ENABLE_NHSJOBS_COM", true)
-  }
+    nhsJobsCom: envBool("ENABLE_NHSJOBS_COM", true),
+  },
 } as const;
 
 export function requireDatabaseUrl(): string {
@@ -49,8 +65,13 @@ export function requireDatabaseUrl(): string {
 }
 
 export function requireWhatsAppGroupJid(): string {
-  if (!config.whatsappGroupJid) {
-    throw new Error("WHATSAPP_GROUP_JID is required unless DRY_RUN_SENDS=true");
+  if (
+    !config.whatsappGroupJid ||
+    config.whatsappGroupJid.includes("xxxxxxxx")
+  ) {
+    throw new Error(
+      "WHATSAPP_GROUP_JID is required unless DRY_RUN_SENDS=true or WHATSAPP_GROUP_NAME is configured",
+    );
   }
 
   return config.whatsappGroupJid;
@@ -59,11 +80,9 @@ export function requireWhatsAppGroupJid(): string {
 export function validateRuntimeConfig(): void {
   requireDatabaseUrl();
 
-  if (!config.dryRunSends) {
-    requireWhatsAppGroupJid();
-  }
-
   if (config.sendMinDelayMs > config.sendMaxDelayMs) {
-    throw new Error("SEND_MIN_DELAY_MS cannot be greater than SEND_MAX_DELAY_MS");
+    throw new Error(
+      "SEND_MIN_DELAY_MS cannot be greater than SEND_MAX_DELAY_MS",
+    );
   }
 }

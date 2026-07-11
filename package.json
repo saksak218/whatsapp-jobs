@@ -9,13 +9,16 @@
     "start": "node dist/index.js",
     "scrape:test": "tsx src/scripts/testScrapers.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
-    "whatsapp:test": "tsx src/scripts/testWhatsApp.ts"
+    "whatsapp:test": "tsx src/scripts/testWhatsApp.ts",
+    "whatsapp:groups": "tsx src/scripts/printWhatsAppGroups.ts",
+    "drizzle:push": "drizzle-kit push",
+    "drizzle:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.18",
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
     "cheerio": "^1.0.0",
-    "dotenv": "^16.4.7",
+    "link-preview-js": "^3.2.0",
     "node-cron": "^3.0.3",
     "pg": "^8.13.1",
     "pino": "^9.5.0",
@@ -25,10 +28,14 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/node-cron": "^3.0.11",
-    "@types/pg": "^8.11.10",
+    "@types/pg": "^8.20.0",
     "@types/qrcode-terminal": "^0.12.2",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
     "pino-pretty": "^13.0.0",
-    "tsx": "^4.19.2",
+    "postgres": "^3.4.9",
+    "tsx": "^4.23.0",
     "typescript": "^5.7.2"
   }
 }

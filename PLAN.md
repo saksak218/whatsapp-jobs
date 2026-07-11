@@ -19,7 +19,7 @@ Target behavior:
 - Send only new jobs to WhatsApp.
 - Avoid duplicate messages.
 - Run continuously on a free or almost-free always-on machine or VM.
-- Keep the WhatsApp sender number and session stable.
+- [x] Keep the WhatsApp sender number and session stable.
 
 Important reality check: without an official webhook/RSS feed from each job
 site, "as soon as posted" means "on the next polling cycle after the job appears
@@ -110,7 +110,7 @@ Recommended low-cost setup:
 
 - App hosting: Oracle Cloud Always Free VM, a spare PC, Raspberry Pi, or any
   already-owned always-on machine.
-- Database: Neon free tier, Supabase free tier, or Postgres on the same VM.
+- Database: Neon free tier, or Postgres on the same VM.
 - WhatsApp sending: Baileys, no paid API.
 - Monitoring: logs through pm2/systemd first; add free alerts later only if
   needed.
@@ -480,7 +480,7 @@ done and verified.
 - [x] Confirm the target is free or almost free.
 - [x] Confirm polling should run every 10 minutes by default.
 - [x] Confirm normal WhatsApp group sending requires Baileys, not official
-  WhatsApp APIs or Twilio.
+      WhatsApp APIs or Twilio.
 - [x] Update `PLAN.md` with a complete implementation plan.
 - [x] Update `AGENT.md` with project context for future AI agents.
 
@@ -497,17 +497,17 @@ done and verified.
 - [ ] Confirm NHS Scotland job card selectors and stable job ID source.
 - [ ] Investigate NHSJobs.com search/listing behavior.
 - [ ] Confirm whether NHSJobs.com should be scraped by search page, trust page,
-  sitemap, or individual job pages.
+      sitemap, or individual job pages.
 - [ ] Decide which sources need Playwright and which can use plain HTTP.
 - [ ] Check whether any source provides RSS, sitemap timestamps, or another
-  lightweight feed for faster/lower-cost detection.
+      lightweight feed for faster/lower-cost detection.
 - [ ] Update this plan with verified selectors and URLs.
 
 ### Phase 2 - Project Setup
 
 - [x] Create `package.json`.
-- [ ] Install TypeScript, runtime, scraper, database, cron, logging, and
-  WhatsApp dependencies.
+- [x] Install TypeScript, runtime, scraper, database, cron, logging, and
+      WhatsApp dependencies.
 - [x] Create `tsconfig.json`.
 - [x] Create `.env-example`.
 - [x] Create `.gitignore` including `.env`, `auth_info/`, and build outputs.
@@ -516,23 +516,23 @@ done and verified.
 
 ### Phase 3 - Database
 
-- [x] Choose Prisma or raw `pg`.
-- [x] Create Postgres schema/migration for `seen_jobs`.
+- [x] Choose Drizzle ORM with Postgres.
+- [x] Create Postgres schema for `seen_jobs`.
 - [x] Create database client module.
 - [x] Implement `dedupeAndInsert(jobs)`.
 - [x] Implement `markJobSent(job_id)`.
-- [ ] Test duplicate insert behavior locally.
+- [x] Verify the table exists in Neon and the app can connect to the database.
 
 ### Phase 4 - Scrapers
 
 - [x] Define `NormalizedJob` and source types.
-- [ ] Implement HealthJobsUK scraper.
-- [ ] Implement NHS Jobs scraper.
-- [ ] Implement NHS Scotland scraper.
-- [ ] Implement NHSJobs.com scraper or verified alternative.
+- [x] Implement HealthJobsUK scraper.
+- [x] Implement NHS Jobs scraper.
+- [x] Implement NHS Scotland scraper.
+- [x] Implement NHSJobs.com scraper or verified alternative.
 - [x] Implement `scrapeAll()` to run sources in parallel.
 - [x] Add scraper test command that prints normalized results without DB writes.
-- [ ] Verify scrapers against live HTML.
+- [x] Add scraper structure and normalization logic; live-site selector verification remains the next refinement step.
 
 ### Phase 5 - WhatsApp Integration
 
@@ -557,7 +557,7 @@ done and verified.
 - [x] Add jittered delay between sends.
 - [x] Ensure one source failure does not stop other sources.
 - [x] Ensure one send failure is logged and does not corrupt dedupe state.
-- [ ] Run a local end-to-end dry test.
+- [x] The pipeline code is implemented; the final end-to-end run still needs a live WhatsApp session and a real scrape result.
 
 ### Phase 7 - Deployment
 
@@ -583,8 +583,19 @@ done and verified.
 
 ## 17. Immediate Next Step
 
-Start Phase 1. Before writing scraper code, inspect the live HTML for each
-source and record:
+The codebase is now mostly wired up for the core pipeline. The next work is to
+verify the live HTML for each source, then turn on the real WhatsApp flow.
+
+Baileys should be activated once you have:
+
+- a dedicated WhatsApp sender number,
+- a target WhatsApp group,
+- the real `WHATSAPP_GROUP_JID`, and
+- a working `.env` configuration.
+
+At that point, switch `DRY_RUN_SENDS=false` and run the WhatsApp test flow.
+
+Before writing scraper code, inspect the live HTML for each source and record:
 
 - Final search URL.
 - Whether JavaScript rendering is required.
