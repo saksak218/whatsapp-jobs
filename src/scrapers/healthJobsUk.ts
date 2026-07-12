@@ -38,6 +38,7 @@ function buildSearchUrls(keyword: string): string[] {
     buildMainSearchUrl(keyword),
     simpleSearch.toString(),
     legacySearch.toString(),
+    baseUrl,
   ];
 }
 
