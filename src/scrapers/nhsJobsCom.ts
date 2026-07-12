@@ -32,6 +32,7 @@ function buildSearchUrls(keyword: string): string[] {
     url.toString(),
     keywordUrl.toString(),
     new URL(`/search-jobs/${slugifyKeyword(keyword)}`, baseUrl).toString(),
+    baseUrl,
   ];
 }
 

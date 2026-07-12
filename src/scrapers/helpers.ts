@@ -96,7 +96,7 @@ export function filterMatchingJobs(
   jobs: NormalizedJob[],
   keyword: string,
 ): NormalizedJob[] {
-  const terms = [keyword, "junior clinical fellow", "clinical fellow", "jcf"]
+  const terms = [keyword, "junior clinical fellow", "clinical fellow", "fellow", "jcf"]
     .map((term) => term.toLowerCase())
     .filter(Boolean);
 
