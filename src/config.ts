@@ -34,9 +34,11 @@ function envList(name: string, fallback: string[]): string[] {
 }
 
 export const config = {
+  isVercel: envBool("VERCEL", false),
   databaseUrl: env("DATABASE_URL"),
   whatsappGroupJid: env("WHATSAPP_GROUP_JID"),
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
+  whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
   searchKeyword: env("SEARCH_KEYWORD", "junior clinical fellow"),
   nhsScotlandFallbackKeywords: envList("NHS_SCOTLAND_FALLBACK_KEYWORDS", [
     "clinical fellow",
@@ -48,6 +50,10 @@ export const config = {
   sendMinDelayMs: envInt("SEND_MIN_DELAY_MS", 8000),
   sendMaxDelayMs: envInt("SEND_MAX_DELAY_MS", 15000),
   dryRunSends: envBool("DRY_RUN_SENDS", false),
+  disableWhatsAppSends: envBool(
+    "DISABLE_WHATSAPP_SENDS",
+    envBool("VERCEL", false),
+  ),
   sources: {
     healthJobsUk: envBool("ENABLE_HEALTHJOBSUK", true),
     jobsNhsUk: envBool("ENABLE_JOBS_NHS_UK", true),
