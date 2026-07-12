@@ -17,7 +17,9 @@ let connecting: Promise<WASocket> | undefined;
 let resolvedGroupJid: string | undefined;
 let socketReady = false;
 
-const authStateDir = path.join(process.cwd(), "auth_info");
+const authStateDir = path.isAbsolute(config.whatsappAuthDir)
+  ? config.whatsappAuthDir
+  : path.join(process.cwd(), config.whatsappAuthDir);
 
 async function ensureAuthStateDir(): Promise<void> {
   await fs.mkdir(authStateDir, { recursive: true });

@@ -38,6 +38,7 @@ export const config = {
   databaseUrl: env("DATABASE_URL"),
   whatsappGroupJid: env("WHATSAPP_GROUP_JID"),
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
+  whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
   searchKeyword: env("SEARCH_KEYWORD", "junior clinical fellow"),
   nhsScotlandFallbackKeywords: envList("NHS_SCOTLAND_FALLBACK_KEYWORDS", [
     "clinical fellow",
