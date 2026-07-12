@@ -40,6 +40,7 @@ export const config = {
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
   whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
   searchKeyword: env("SEARCH_KEYWORD", "junior clinical fellow"),
+  dbConnectTimeoutSeconds: envInt("DB_CONNECT_TIMEOUT_SECONDS", 30),
   nhsScotlandFallbackKeywords: envList("NHS_SCOTLAND_FALLBACK_KEYWORDS", [
     "clinical fellow",
     "fellow",

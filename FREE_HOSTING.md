@@ -49,6 +49,7 @@ Use these important values:
 
 ```env
 DATABASE_URL=postgres://...
+DB_CONNECT_TIMEOUT_SECONDS=30
 WHATSAPP_GROUP_JID=120363xxxxxxxxxxxx@g.us
 WHATSAPP_AUTH_DIR=/opt/nhs-jobs/auth_info
 DRY_RUN_SENDS=false
@@ -58,6 +59,19 @@ SCRAPE_INTERVAL_CRON=*/10 * * * *
 
 If you do not know the group JID yet, set `WHATSAPP_GROUP_NAME` instead, start
 the app once, then run `npm run whatsapp:groups` after pairing.
+
+To sanity-check the database URL on the VM without exposing the secret, run:
+
+```bash
+grep '^DATABASE_URL=' .env
+```
+
+You should see the `DATABASE_URL=` line present. If you want to confirm the
+value is not empty, use:
+
+```bash
+test -n "$(grep '^DATABASE_URL=' .env | cut -d= -f2-)" && echo OK
+```
 
 ## 5. Build and migrate
 
