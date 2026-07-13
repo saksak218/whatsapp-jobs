@@ -15,9 +15,9 @@ import type { NormalizedJob } from "./types.js";
 const source = "jobs-nhs-uk" as const;
 const baseUrl = "https://www.jobs.nhs.uk";
 
-function buildSearchUrl(page: number): string {
+function buildSearchUrl(keyword: string, page: number): string {
   const url = new URL("/candidate/search/results", baseUrl);
-  url.searchParams.set("keyword", config.searchKeyword);
+  url.searchParams.set("keyword", keyword);
   url.searchParams.set("staffGroup", "MEDICAL_AND_DENTAL");
   url.searchParams.set("sort", "publicationDateDesc");
   url.searchParams.set("skipPhraseSuggester", "true");
@@ -73,19 +73,25 @@ function parseJobsNhsUkPage(html: string, searchUrl: string): NormalizedJob[] {
 }
 
 export async function scrapeJobsNhsUk(): Promise<NormalizedJob[]> {
-  try {
-    const jobs: NormalizedJob[] = [];
+  const jobs: NormalizedJob[] = [];
+  const failures: string[] = [];
 
-    for (let page = 1; page <= config.jobsNhsUkMaxPages; page += 1) {
-      const searchUrl = buildSearchUrl(page);
-      const pageJobs = parseJobsNhsUkPage(await fetchHtml(searchUrl), searchUrl);
-      if (pageJobs.length === 0) break;
-      jobs.push(...pageJobs);
+  for (const keyword of config.searchKeywords) {
+    try {
+      for (let page = 1; page <= config.jobsNhsUkMaxPages; page += 1) {
+        const searchUrl = buildSearchUrl(keyword, page);
+        const pageJobs = parseJobsNhsUkPage(await fetchHtml(searchUrl), searchUrl);
+        if (pageJobs.length === 0) break;
+        jobs.push(...pageJobs);
+      }
+    } catch (error) {
+      failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return filterMatchingJobs(uniqueJobs(jobs), config.searchKeyword);
-  } catch (error) {
-    logScraperFailure(source, error);
-    return [];
   }
+
+  if (failures.length > 0) {
+    logScraperFailure(source, new Error(`Some NHS Jobs keyword searches failed. ${failures.join(" | ")}`));
+  }
+
+  return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);
 }

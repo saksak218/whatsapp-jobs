@@ -92,22 +92,57 @@ export function buildJobId(
   return `${source}:${safeId || fallback}`;
 }
 
+function normalizeForMatch(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isExcludedSeniorRole(job: NormalizedJob): boolean {
+  const title = job.title.toLowerCase();
+  return (
+    /\bsenior\s+clinical\s+fellow\b/i.test(title) ||
+    /\bsnr\.?\s+clinical\s+fellow\b/i.test(title) ||
+    /\bspec\s*reg\b/i.test(title)
+  );
+}
+
+export function getMatchingKeywords(
+  job: NormalizedJob,
+  keywords: readonly string[],
+): string[] {
+  if (isExcludedSeniorRole(job)) return [];
+
+  const haystack = normalizeForMatch(`${job.title} ${job.employer ?? ""}`);
+  return keywords.filter((keyword) => {
+    const term = normalizeForMatch(keyword);
+    return term.length > 0 && haystack.includes(term);
+  });
+}
+
 export function filterMatchingJobs(
   jobs: NormalizedJob[],
-  keyword: string,
+  keywords: readonly string[],
 ): NormalizedJob[] {
-  const terms = [keyword, "junior clinical fellow", "clinical fellow", "fellow", "jcf"]
-    .map((term) => term.toLowerCase())
-    .filter(Boolean);
-
-  return jobs.filter((job) => {
-    const haystack = `${job.title} ${job.employer ?? ""}`.toLowerCase();
-    return terms.some((term) => haystack.includes(term));
-  });
+  return jobs.filter((job) => getMatchingKeywords(job, keywords).length > 0);
 }
 
 export function logScraperFailure(source: JobSource, error: unknown): void {
   logger.error({ source, err: error instanceof Error ? error : new Error(String(error)) }, "scraper failed");
+}
+
+export function logBlockedSourceFallback(source: JobSource, error: unknown): void {
+  logger.warn(
+    {
+      source,
+      err: error instanceof Error ? error : new Error(String(error)),
+      fallback:
+        "direct HTTP was blocked; use free-first alternatives: browser-mode scraping, public job-alert email ingestion, or mirrored trust/NHS Jobs listings",
+    },
+    "source appears to block direct HTTP scraping",
+  );
 }
 
 export function uniqueJobs(jobs: NormalizedJob[]): NormalizedJob[] {

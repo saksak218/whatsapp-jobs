@@ -15,10 +15,23 @@ function pickTemplate(jobId: string): string {
   return templates[total % templates.length] ?? templates[0];
 }
 
+function sourceLabel(source: NormalizedJob["source"]): string {
+  const labels: Record<NormalizedJob["source"], string> = {
+    healthjobsuk: "HealthJobsUK",
+    "jobs-nhs-uk": "NHS Jobs",
+    "nhs-scotland": "NHS Scotland Jobs",
+    "nhsjobs-com": "NHSJobs.com",
+    hscni: "HSCNI Jobs",
+  };
+
+  return labels[source];
+}
+
 export function formatJobAlert(job: NormalizedJob): string {
   const lines = [
     pickTemplate(job.job_id),
     "",
+    `Source: ${sourceLabel(job.source)}`,
     `Title: ${job.title}`,
     job.employer ? `Trust: ${job.employer}` : undefined,
     job.location ? `Location: ${job.location}` : undefined,

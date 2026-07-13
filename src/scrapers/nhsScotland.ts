@@ -7,7 +7,8 @@ import {
   fetchFirstHtml,
   loadHtml,
   logScraperFailure,
-  text
+  text,
+  uniqueJobs
 } from "./helpers.js";
 import type { NormalizedJob } from "./types.js";
 
@@ -31,16 +32,12 @@ function buildSearchUrls(keyword: string): string[] {
   ];
 }
 
-function searchKeywords(): string[] {
-  return [
-    config.searchKeyword,
-    ...config.nhsScotlandFallbackKeywords,
-  ].filter((keyword, index, keywords) => keywords.indexOf(keyword) === index);
-}
-
 export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
-  try {
-    for (const keyword of searchKeywords()) {
+  const allJobs: NormalizedJob[] = [];
+  const failures: string[] = [];
+
+  for (const keyword of config.searchKeywords) {
+    try {
       const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
       const $ = loadHtml(html);
       const jobs: NormalizedJob[] = [];
@@ -76,13 +73,15 @@ export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
         });
       });
 
-      const matchingJobs = filterMatchingJobs(jobs, keyword);
-      if (matchingJobs.length > 0) return matchingJobs;
+      allJobs.push(...jobs);
+    } catch (error) {
+      failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return [];
-  } catch (error) {
-    logScraperFailure(source, error);
-    return [];
   }
+
+  if (failures.length > 0) {
+    logScraperFailure(source, new Error(`Some NHS Scotland keyword searches failed. ${failures.join(" | ")}`));
+  }
+
+  return filterMatchingJobs(uniqueJobs(allJobs), config.searchKeywords);
 }

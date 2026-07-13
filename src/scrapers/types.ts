@@ -2,7 +2,8 @@ export type JobSource =
   | "healthjobsuk"
   | "jobs-nhs-uk"
   | "nhs-scotland"
-  | "nhsjobs-com";
+  | "nhsjobs-com"
+  | "hscni";
 
 export interface NormalizedJob {
   job_id: string;

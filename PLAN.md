@@ -2,9 +2,9 @@
 
 ## 1. Goal
 
-Build a code-based automation system that finds new `junior clinical fellow`
-jobs from NHS-related job websites and sends each new listing to a WhatsApp
-group.
+Build a code-based automation system that finds new junior doctor / clinical
+fellow style jobs from NHS-related job websites and sends each new listing to a
+WhatsApp group.
 
 The user works with JavaScript frameworks like Next.js, React.js, and
 Express.js, so this project should use the JavaScript/TypeScript ecosystem.
@@ -14,7 +14,9 @@ Target behavior:
 
 - Scrape job sources every 10 minutes.
 - Send jobs as soon as they are detected by the next scrape cycle.
-- Match `junior clinical fellow` and close variants such as `clinical fellow`.
+- Match the configured keyword list for clinical fellow, foundation doctor,
+  and core trainee style roles.
+- Exclude senior clinical fellow / specialist registrar style roles.
 - Save every seen job in Postgres.
 - Send only new jobs to WhatsApp.
 - Avoid duplicate messages.
@@ -53,6 +55,14 @@ Initial v1 sources:
    - Need to verify whether this site has a reliable searchable listing page
      or whether it should be handled as a source of individual trust job pages.
 
+5. HSCNI Jobs
+   - Category URL:
+     `https://jobs.hscni.net/Search?SearchCatID=63`
+   - Medical & Dental category is server-rendered HTML and can be parsed with
+     Cheerio.
+   - Verified matching example:
+     `https://jobs.hscni.net/Job/46128/71826143clinical-fellow-in-multiple-sclerosis`
+
 ## 3. Architecture Decision
 
 Use one persistent Node.js process.
@@ -64,6 +74,7 @@ node-cron every 10 min
     -> scrapeJobsNhsUk()
     -> scrapeNhsScotland()
     -> scrapeNhsJobsCom()
+    -> scrapeHscni()
   -> normalize results
   -> insert into Postgres with ON CONFLICT DO NOTHING RETURNING *
   -> send only newly inserted jobs to WhatsApp
@@ -195,7 +206,8 @@ export type JobSource =
   | "healthjobsuk"
   | "jobs-nhs-uk"
   | "nhs-scotland"
-  | "nhsjobs-com";
+  | "nhsjobs-com"
+  | "hscni";
 
 export interface NormalizedJob {
   job_id: string;
@@ -218,6 +230,7 @@ healthjobsuk:123456
 jobs-nhs-uk:C9348-26-0001
 nhs-scotland:abc123
 nhsjobs-com:Clinical_Fellow-v8146777
+hscni:46128
 ```
 
 ## 8. Scraper Design
@@ -232,6 +245,7 @@ src/
     jobsNhsUk.ts
     nhsScotland.ts
     nhsJobsCom.ts
+    hscni.ts
     index.ts
 ```
 
@@ -251,24 +265,26 @@ trusted. Do not pretend guessed selectors are tested.
 
 ## 9. Matching Strategy
 
-Default keyword:
+Default keywords:
 
 ```text
-junior clinical fellow
+Clinical Fellow
+Junior Clinical Fellow
+Clinical Research Fellow
+Foundation House officer 1
+Foundation House Officer 2
+Foundation Year 2
+Core Trainee (CT1/2)
 ```
 
-Also consider close variants during parsing:
+Do not use broad generic fallback terms such as `senior`, `fellow`, or `jcf`.
 
-- `junior clinical fellow`
-- `clinical fellow`
-- `jcf`
+All scrapers must:
 
-The first version can keep matching simple:
-
-- Search by keyword where the site supports it.
-- Also filter parsed job titles locally with a case-insensitive matcher.
-
-Later improvements can add include/exclude rules.
+- Search every configured keyword where the site supports keyword search.
+- Filter parsed job titles locally with the shared include/exclude matcher.
+- Exclude senior-role signals including `Senior Clinical Fellow`,
+  `Snr Clinical Fellow`, and `Spec Reg`.
 
 ## 10. WhatsApp Sending
 
@@ -363,7 +379,7 @@ lighter change signal, prefer checking that first. If no such signal exists,
 ```text
 DATABASE_URL=postgres://user:pass@host:5432/dbname
 WHATSAPP_GROUP_JID=1203xxxxxxxxx@g.us
-SEARCH_KEYWORD=junior clinical fellow
+SEARCH_KEYWORDS=Clinical Fellow,Junior Clinical Fellow,Clinical Research Fellow,Foundation House officer 1,Foundation House Officer 2,Foundation Year 2,Core Trainee (CT1/2)
 SCRAPE_INTERVAL_CRON=*/10 * * * *
 LOG_LEVEL=info
 ```
@@ -426,6 +442,12 @@ Scraping:
 - Identify broken selectors quickly through logs.
 - Keep per-source failures isolated.
 - Use Playwright only when necessary.
+- HealthJobsUK and NHSJobs.com currently return HTTP 403 to direct HTTP
+  scraping in live tests. Keep direct HTTP first, log these as blocked-source
+  failures, then use free-first alternatives: browser-mode scraping with polite
+  rate limits, public job-alert email ingestion, or mirrored trust/NHS Jobs
+  listings. Do not add paid scraping/search APIs unless the user explicitly
+  changes the budget.
 
 Database:
 
@@ -451,6 +473,7 @@ nhsJobs/
       jobsNhsUk.ts
       nhsScotland.ts
       nhsJobsCom.ts
+      hscni.ts
       index.ts
     whatsapp/
       client.ts
@@ -486,15 +509,18 @@ done and verified.
 
 ### Phase 1 - Source Verification
 
-- [ ] Open HealthJobsUK search results for `junior clinical fellow`.
+- [ ] Open HealthJobsUK search results for configured keywords.
 - [ ] Confirm HealthJobsUK keyword query parameters.
 - [ ] Confirm HealthJobsUK job card selectors and stable job ID source.
-- [ ] Open NHS Jobs search results for `junior clinical fellow`.
-- [ ] Confirm NHS Jobs keyword/employer query parameters.
-- [ ] Confirm NHS Jobs job card selectors and stable job ID source.
-- [ ] Open NHS Scotland Jobs search results for `junior clinical fellow`.
-- [ ] Confirm NHS Scotland query parameters.
-- [ ] Confirm NHS Scotland job card selectors and stable job ID source.
+- [x] Open NHS Jobs search results for configured keywords.
+- [x] Confirm NHS Jobs keyword/employer query parameters.
+- [x] Confirm NHS Jobs job card selectors and stable job ID source.
+- [x] Open NHS Scotland Jobs search results for configured keywords.
+- [x] Confirm NHS Scotland query parameters.
+- [x] Confirm NHS Scotland job card selectors and stable job ID source.
+- [x] Open HSCNI Medical & Dental results.
+- [x] Confirm HSCNI keyword/category query parameters.
+- [x] Confirm HSCNI job card selectors and stable job ID source.
 - [ ] Investigate NHSJobs.com search/listing behavior.
 - [ ] Confirm whether NHSJobs.com should be scraped by search page, trust page,
       sitemap, or individual job pages.
@@ -530,6 +556,9 @@ done and verified.
 - [x] Implement NHS Jobs scraper.
 - [x] Implement NHS Scotland scraper.
 - [x] Implement NHSJobs.com scraper or verified alternative.
+- [x] Implement HSCNI scraper.
+- [x] Implement shared include/exclude matcher with senior-role exclusion.
+- [x] Update scrapers to search all configured keywords.
 - [x] Implement `scrapeAll()` to run sources in parallel.
 - [x] Add scraper test command that prints normalized results without DB writes.
 - [x] Add scraper structure and normalization logic; live-site selector verification remains the next refinement step.
