@@ -33,18 +33,24 @@ function envList(name: string, fallback: string[]): string[] {
     .filter(Boolean);
 }
 
+const defaultSearchKeywords = [
+  "Clinical Fellow",
+  "Junior Clinical Fellow",
+  "Clinical Research Fellow",
+  "Foundation House officer 1",
+  "Foundation House Officer 2",
+  "Foundation Year 2",
+  "Core Trainee (CT1/2)",
+];
+
 export const config = {
   isVercel: envBool("VERCEL", false),
   databaseUrl: env("DATABASE_URL"),
   whatsappGroupJid: env("WHATSAPP_GROUP_JID"),
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
   whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
-  searchKeyword: env("SEARCH_KEYWORD", "junior clinical fellow"),
+  searchKeywords: envList("SEARCH_KEYWORDS", defaultSearchKeywords),
   dbConnectTimeoutSeconds: envInt("DB_CONNECT_TIMEOUT_SECONDS", 30),
-  nhsScotlandFallbackKeywords: envList("NHS_SCOTLAND_FALLBACK_KEYWORDS", [
-    "clinical fellow",
-    "fellow",
-  ]),
   jobsNhsUkMaxPages: envInt("JOBS_NHS_UK_MAX_PAGES", 10),
   scrapeIntervalCron: env("SCRAPE_INTERVAL_CRON", "*/10 * * * *"),
   logLevel: env("LOG_LEVEL", "info"),
@@ -60,6 +66,7 @@ export const config = {
     jobsNhsUk: envBool("ENABLE_JOBS_NHS_UK", true),
     nhsScotland: envBool("ENABLE_NHS_SCOTLAND", true),
     nhsJobsCom: envBool("ENABLE_NHSJOBS_COM", true),
+    hscni: envBool("ENABLE_HSCNI", true),
   },
 } as const;
 

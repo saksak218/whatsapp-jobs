@@ -11,8 +11,8 @@ updated as work is completed by changing task checkboxes from `[ ]` to `[x]`.
 
 A single long-running Node.js process will:
 
-1. Scrape NHS job sources every 10 minutes for roles matching
-   `junior clinical fellow` and close variants such as `clinical fellow`.
+1. Scrape NHS job sources every 10 minutes for roles matching the configured
+   clinical fellow, foundation doctor, and core trainee keyword list.
 2. Normalize all listings into one shared job shape.
 3. Insert jobs into Postgres with an atomic dedupe query so each job is only
    processed once.
@@ -43,6 +43,8 @@ Treat these as first-class sources for v1:
   `https://apply.jobs.scot.nhs.uk/Home/Job`
 - NHSJobs.com / trust-hosted job pages:
   `https://www.nhsjobs.com/job/UK/London/London/Moorfields_Eye_Hospital_NHS_Foundation_Trust/Clinical_Fellow/Clinical_Fellow-v8146777?...`
+- HSCNI Jobs:
+  `https://jobs.hscni.net/Search?SearchCatID=63`
 
 Do not assume the provided URLs are final production search URLs. Phase 1 in
 `PLAN.md` is specifically for verifying search URLs, query parameters, whether
@@ -196,10 +198,14 @@ npm run db:migrate   # apply Prisma migrations, if Prisma is used
 ```text
 DATABASE_URL=
 WHATSAPP_GROUP_JID=
-SEARCH_KEYWORD=junior clinical fellow
+SEARCH_KEYWORDS=Clinical Fellow,Junior Clinical Fellow,Clinical Research Fellow,Foundation House officer 1,Foundation House Officer 2,Foundation Year 2,Core Trainee (CT1/2)
 SCRAPE_INTERVAL_CRON=*/10 * * * *
 LOG_LEVEL=info
 ```
+
+Use `SEARCH_KEYWORDS`. Do not add broad fallback terms such as `senior`,
+`fellow`, or `jcf`. Senior clinical fellow / specialist registrar style titles
+should be excluded.
 
 Never commit a populated `.env`. Never log secrets, connection strings, QR
 session data, or API credentials.

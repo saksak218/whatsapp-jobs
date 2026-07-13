@@ -5,8 +5,10 @@ import {
   fetchFirstHtml,
   filterMatchingJobs,
   loadHtml,
+  logBlockedSourceFallback,
   logScraperFailure,
-  text
+  text,
+  uniqueJobs
 } from "./helpers.js";
 import type { NormalizedJob } from "./types.js";
 
@@ -37,10 +39,13 @@ function buildSearchUrls(keyword: string): string[] {
 }
 
 export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
-  try {
-    const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(config.searchKeyword));
+  const jobs: NormalizedJob[] = [];
+  const failures: string[] = [];
+
+  for (const keyword of config.searchKeywords) {
+    try {
+    const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
     const $ = loadHtml(html);
-    const jobs: NormalizedJob[] = [];
 
     $("a[href*='/job/']").each((index, element) => {
       const link = $(element);
@@ -60,13 +65,22 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
         location: container.find(".location").first().text().trim() || undefined,
         salary: /Salary:\s*([^]*?)(?=Closing|Location|$)/i.exec(containerText)?.[1]?.trim(),
         url,
-        raw: { searchUrl }
+        raw: { searchUrl, keyword }
       });
     });
-
-    return filterMatchingJobs(jobs, config.searchKeyword);
-  } catch (error) {
-    logScraperFailure(source, error);
-    return [];
+    } catch (error) {
+      failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
+
+  if (failures.length > 0) {
+    const error = new Error(`Some NHSJobs.com keyword searches failed. ${failures.join(" | ")}`);
+    if (/status 403|status 429|forbidden|too many requests/i.test(error.message)) {
+      logBlockedSourceFallback(source, error);
+    } else {
+      logScraperFailure(source, error);
+    }
+  }
+
+  return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);
 }
