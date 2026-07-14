@@ -444,10 +444,11 @@ Scraping:
 - Use Playwright only when necessary.
 - HealthJobsUK and NHSJobs.com currently return HTTP 403 to direct HTTP
   scraping in live tests. Keep direct HTTP first, log these as blocked-source
-  failures, then use free-first alternatives: browser-mode scraping with polite
-  rate limits, public job-alert email ingestion, or mirrored trust/NHS Jobs
-  listings. Do not add paid scraping/search APIs unless the user explicitly
-  changes the budget.
+  failures, then use the free text-rendered trac.jobs fallback. If that stops
+  working, the next free-first alternatives are browser-mode scraping with
+  polite rate limits, public job-alert email ingestion, or mirrored trust/NHS
+  Jobs listings. Do not add paid scraping/search APIs unless the user
+  explicitly changes the budget.
 
 Database:
 
@@ -559,6 +560,12 @@ done and verified.
 - [x] Implement HSCNI scraper.
 - [x] Implement shared include/exclude matcher with senior-role exclusion.
 - [x] Update scrapers to search all configured keywords.
+- [x] Add free rendered fallback for blocked HealthJobsUK and NHSJobs.com
+      result pages.
+- [x] Add cross-source trac.jobs dedupe to avoid duplicate HealthJobsUK /
+      NHSJobs.com alerts for the same vacancy.
+- [x] Fix rendered fallback URL construction after Oracle VM logs showed direct
+      HTTP 403s and zero extracted HealthJobsUK / NHSJobs.com jobs.
 - [x] Implement `scrapeAll()` to run sources in parallel.
 - [x] Add scraper test command that prints normalized results without DB writes.
 - [x] Add scraper structure and normalization logic; live-site selector verification remains the next refinement step.
@@ -586,6 +593,8 @@ done and verified.
 - [x] Add jittered delay between sends.
 - [x] Ensure one source failure does not stop other sources.
 - [x] Ensure one send failure is logged and does not corrupt dedupe state.
+- [x] Ensure one WhatsApp send failure leaves the job pending and does not abort
+      the remaining send loop.
 - [x] The pipeline code is implemented; the final end-to-end run still needs a live WhatsApp session and a real scrape result.
 
 ### Phase 7 - Deployment

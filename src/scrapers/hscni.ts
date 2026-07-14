@@ -22,6 +22,12 @@ function buildSearchUrl(keyword: string): string {
   return url.toString();
 }
 
+function buildCategoryUrl(): string {
+  const url = new URL("/Search", baseUrl);
+  url.searchParams.set("SearchCatID", "63");
+  return url.toString();
+}
+
 function overviewValue(containerText: string, label: string): string | undefined {
   const match = new RegExp(`${label}:\\s*([^]*?)(?=Salary:|Location:|Contract Type:|$)`, "i").exec(containerText);
   return match?.[1]?.trim();
@@ -68,6 +74,13 @@ function parseHscniPage(html: string, searchUrl: string, keyword: string): Norma
 export async function scrapeHscni(): Promise<NormalizedJob[]> {
   const jobs: NormalizedJob[] = [];
   const failures: string[] = [];
+  const categoryUrl = buildCategoryUrl();
+
+  try {
+    jobs.push(...parseHscniPage(await fetchHtml(categoryUrl), categoryUrl, "Medical & Dental category"));
+  } catch (error) {
+    failures.push(`Medical & Dental category: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   for (const keyword of config.searchKeywords) {
     const searchUrl = buildSearchUrl(keyword);

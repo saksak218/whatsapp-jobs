@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "scrape:test": "tsx src/scripts/testScrapers.ts",
+    "diagnose": "tsx src/scripts/diagnose.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "whatsapp:test": "tsx src/scripts/testWhatsApp.ts",
     "whatsapp:groups": "tsx src/scripts/printWhatsAppGroups.ts",
