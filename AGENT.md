@@ -49,6 +49,9 @@ Treat these as first-class sources for v1:
 Do not assume the provided URLs are final production search URLs. Phase 1 in
 `PLAN.md` is specifically for verifying search URLs, query parameters, whether
 JavaScript rendering is required, and the real HTML selectors for each source.
+HealthJobsUK and NHSJobs.com direct HTTP requests can return 403; keep direct
+HTTP first, then use the free rendered trac.jobs fallback before considering
+browser automation or job-alert email ingestion.
 
 ## Key Architecture Decision
 
@@ -157,6 +160,10 @@ poll every 10 minutes and send new jobs as soon as they are detected.
 
 All sends must go through `src/whatsapp/send.ts`. Do not call the Baileys socket
 directly from scrapers, database code, or the cron handler.
+
+If a WhatsApp send fails, leave `sent_at` null so the next scrape cycle retries
+the job. A single failed send should be logged with the `job_id` and must not
+abort the rest of the send loop.
 
 Any delay/rate-limit logic must preserve jitter. A fixed identical delay for
 every message is not acceptable for this project.

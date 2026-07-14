@@ -63,7 +63,16 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
 
     let sentJobs = 0;
     for (const job of jobsToSend) {
-      const sent = await sendJobAlert(job);
+      let sent = false;
+      try {
+        sent = await sendJobAlert(job);
+      } catch (error) {
+        logger.error(
+          { error, job_id: job.job_id, source: job.source },
+          "WhatsApp job alert failed; job will remain pending",
+        );
+      }
+
       if (!sent) continue;
 
       await markJobSent(job.job_id);

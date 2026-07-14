@@ -3,10 +3,12 @@ import {
   absoluteUrl,
   buildJobId,
   fetchFirstHtml,
+  fetchRenderedMarkdown,
   filterMatchingJobs,
   loadHtml,
   logBlockedSourceFallback,
   logScraperFailure,
+  parseRenderedTracJobsMarkdown,
   text,
   uniqueJobs
 } from "./helpers.js";
@@ -24,6 +26,11 @@ function slugifyKeyword(keyword: string): string {
 }
 
 function buildSearchUrls(keyword: string): string[] {
+  const tracStyleUrl = new URL("/job_list", baseUrl);
+  tracStyleUrl.searchParams.set("JobSearch_q", keyword);
+  tracStyleUrl.searchParams.set("JobSearch_Submit", "Search");
+  tracStyleUrl.searchParams.set("_tr", "JobSearch");
+
   const url = new URL("/search", baseUrl);
   url.searchParams.set("q", keyword);
 
@@ -31,6 +38,7 @@ function buildSearchUrls(keyword: string): string[] {
   keywordUrl.searchParams.set("keywords", keyword);
 
   return [
+    tracStyleUrl.toString(),
     url.toString(),
     keywordUrl.toString(),
     new URL(`/search-jobs/${slugifyKeyword(keyword)}`, baseUrl).toString(),
@@ -38,9 +46,16 @@ function buildSearchUrls(keyword: string): string[] {
   ];
 }
 
+async function scrapeRenderedFallback(keyword: string): Promise<NormalizedJob[]> {
+  const searchUrl = buildSearchUrls(keyword)[0] ?? baseUrl;
+  const markdown = await fetchRenderedMarkdown(searchUrl);
+  return parseRenderedTracJobsMarkdown(markdown, source, baseUrl, searchUrl, keyword);
+}
+
 export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
   const jobs: NormalizedJob[] = [];
   const failures: string[] = [];
+  const fallbackFailures: string[] = [];
 
   for (const keyword of config.searchKeywords) {
     try {
@@ -70,6 +85,12 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
     });
     } catch (error) {
       failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
+
+      try {
+        jobs.push(...await scrapeRenderedFallback(keyword));
+      } catch (fallbackError) {
+        fallbackFailures.push(`${keyword}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+      }
     }
   }
 
@@ -80,6 +101,10 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
     } else {
       logScraperFailure(source, error);
     }
+  }
+
+  if (fallbackFailures.length > 0) {
+    logScraperFailure(source, new Error(`Some NHSJobs.com rendered fallback searches failed. ${fallbackFailures.join(" | ")}`));
   }
 
   return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);

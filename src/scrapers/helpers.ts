@@ -65,6 +65,12 @@ export async function fetchFirstHtml(
   throw new Error(`All search URLs failed. ${failures.join(" | ")}`);
 }
 
+export async function fetchRenderedMarkdown(url: string): Promise<string> {
+  const target = new URL(url);
+  const renderedUrl = `https://r.jina.ai/http://${target.host}${target.pathname}${target.search}${target.hash}`;
+  return fetchHtml(renderedUrl);
+}
+
 export function loadHtml(html: string): cheerio.CheerioAPI {
   return cheerio.load(html);
 }
@@ -92,6 +98,67 @@ export function buildJobId(
   return `${source}:${safeId || fallback}`;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function cleanMarkdownTitle(value: string): string {
+  return value
+    .replace(/^\s*\d+\.\s+\[/, "")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function parseRenderedTracJobsMarkdown(
+  markdown: string,
+  source: JobSource,
+  baseUrl: string,
+  searchUrl: string,
+  keyword: string,
+): NormalizedJob[] {
+  const jobs: NormalizedJob[] = [];
+  const basePattern = escapeRegExp(baseUrl);
+  const linkPattern = new RegExp(`\\]\\((${basePattern}/job/[^\\s)]+)(?:\\s+"([^"]+)")?\\)`, "g");
+
+  for (const line of markdown.split("\n")) {
+    if (!line.includes(`${baseUrl}/job/`)) continue;
+
+    linkPattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = linkPattern.exec(line)) !== null) {
+      const url = match[1];
+      if (!url) continue;
+
+      const titleFromAttribute = match[2]?.trim();
+      const titleFromText = cleanMarkdownTitle(line.slice(0, match.index));
+      const title = titleFromAttribute || titleFromText;
+      if (!title || title.length < 4) continue;
+
+      const visibleText = cleanMarkdownTitle(line);
+      const salary = /Salary:\s*([^]*?)(?=\]\(|$)/i.exec(visibleText)?.[1]?.trim();
+      const location = /,\s*([^,]+?)\s+Speciality:/i.exec(visibleText)?.[1]?.trim();
+
+      jobs.push({
+        job_id: buildJobId(source, url, String(jobs.length)),
+        source,
+        title,
+        location,
+        salary,
+        url,
+        raw: {
+          searchUrl,
+          keyword,
+          fallback: "r.jina.ai rendered markdown",
+        },
+      });
+    }
+  }
+
+  return jobs;
+}
+
 function normalizeForMatch(value: string): string {
   return value
     .toLowerCase()
@@ -100,12 +167,29 @@ function normalizeForMatch(value: string): string {
     .trim();
 }
 
+const defaultMatchPatterns = [
+  /\bclinical\s+fellow\b/i,
+  /\bjunior\s+clinical\s+fellow\b/i,
+  /\bclinical\s+research\s+fellow\b/i,
+  /\bfoundation\s+(?:house\s+officer|doctor|year)\s*(?:1|one|i)\b/i,
+  /\bfoundation\s+(?:house\s+officer|doctor|year)\s*(?:2|two|ii)\b/i,
+  /\b(?:fho|fy|f)\s*1\b/i,
+  /\b(?:fho|fy|f)\s*2\b/i,
+  /\bcore\s+trainee\b/i,
+  /\bct\s*1\b/i,
+  /\bct\s*2\b/i,
+  /\bct\s*1\s*(?:\/|-|and|&)\s*2\b/i,
+];
+
 export function isExcludedSeniorRole(job: NormalizedJob): boolean {
   const title = job.title.toLowerCase();
   return (
+    (/\bsenior\b/i.test(title) && /\bfellow\b/i.test(title)) ||
     /\bsenior\s+clinical\s+fellow\b/i.test(title) ||
     /\bsnr\.?\s+clinical\s+fellow\b/i.test(title) ||
-    /\bspec\s*reg\b/i.test(title)
+    /\bspec\s*reg\b/i.test(title) ||
+    /\bpost\s*-?\s*cct\b/i.test(title) ||
+    /\bst\s*[3-8]\+?\b/i.test(title)
   );
 }
 
@@ -115,11 +199,18 @@ export function getMatchingKeywords(
 ): string[] {
   if (isExcludedSeniorRole(job)) return [];
 
-  const haystack = normalizeForMatch(`${job.title} ${job.employer ?? ""}`);
-  return keywords.filter((keyword) => {
+  const searchableText = `${job.title} ${job.employer ?? ""}`;
+  const haystack = normalizeForMatch(searchableText);
+  const configuredMatches = keywords.filter((keyword) => {
     const term = normalizeForMatch(keyword);
     return term.length > 0 && haystack.includes(term);
   });
+
+  if (configuredMatches.length > 0) return configuredMatches;
+
+  return defaultMatchPatterns.some((pattern) => pattern.test(searchableText))
+    ? ["configured keyword variant"]
+    : [];
 }
 
 export function filterMatchingJobs(
@@ -150,6 +241,37 @@ export function uniqueJobs(jobs: NormalizedJob[]): NormalizedJob[] {
   return jobs.filter((job) => {
     if (seen.has(job.job_id)) return false;
     seen.add(job.job_id);
+    return true;
+  });
+}
+
+function canonicalJobKey(job: NormalizedJob): string {
+  try {
+    const parsed = new URL(job.url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const pathParts = parsed.pathname.split("/").filter(Boolean);
+    const lastPart = pathParts[pathParts.length - 1];
+
+    if (
+      (host === "healthjobsuk.com" || host === "nhsjobs.com") &&
+      pathParts[0]?.toLowerCase() === "job" &&
+      lastPart
+    ) {
+      return `trac:${lastPart.toLowerCase()}`;
+    }
+  } catch {
+    return job.job_id;
+  }
+
+  return job.job_id;
+}
+
+export function uniqueJobsAcrossSources(jobs: NormalizedJob[]): NormalizedJob[] {
+  const seen = new Set<string>();
+  return jobs.filter((job) => {
+    const key = canonicalJobKey(job);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }

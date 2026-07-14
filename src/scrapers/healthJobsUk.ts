@@ -3,10 +3,12 @@ import {
   absoluteUrl,
   buildJobId,
   fetchFirstHtml,
+  fetchRenderedMarkdown,
   filterMatchingJobs,
   loadHtml,
   logBlockedSourceFallback,
   logScraperFailure,
+  parseRenderedTracJobsMarkdown,
   text,
   uniqueJobs
 } from "./helpers.js";
@@ -44,9 +46,16 @@ function buildSearchUrls(keyword: string): string[] {
   ];
 }
 
+async function scrapeRenderedFallback(keyword: string): Promise<NormalizedJob[]> {
+  const searchUrl = buildMainSearchUrl(keyword);
+  const markdown = await fetchRenderedMarkdown(searchUrl);
+  return parseRenderedTracJobsMarkdown(markdown, source, baseUrl, searchUrl, keyword);
+}
+
 export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
   const jobs: NormalizedJob[] = [];
   const failures: string[] = [];
+  const fallbackFailures: string[] = [];
 
   for (const keyword of config.searchKeywords) {
     try {
@@ -77,6 +86,12 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
     });
     } catch (error) {
       failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
+
+      try {
+        jobs.push(...await scrapeRenderedFallback(keyword));
+      } catch (fallbackError) {
+        fallbackFailures.push(`${keyword}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+      }
     }
   }
 
@@ -87,6 +102,10 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
     } else {
       logScraperFailure(source, error);
     }
+  }
+
+  if (fallbackFailures.length > 0) {
+    logScraperFailure(source, new Error(`Some HealthJobsUK rendered fallback searches failed. ${fallbackFailures.join(" | ")}`));
   }
 
   return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);

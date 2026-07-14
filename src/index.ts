@@ -7,7 +7,12 @@ import { startWhatsAppClient } from "./whatsapp/client.js";
 validateRuntimeConfig();
 
 if (!config.dryRunSends && !config.disableWhatsAppSends) {
-  await startWhatsAppClient();
+  await startWhatsAppClient().catch((error) => {
+    logger.error(
+      { error },
+      "WhatsApp startup failed; scraper will continue and retry sends during cycles",
+    );
+  });
 } else {
   logger.warn("WhatsApp messages are disabled for this runtime");
 }
