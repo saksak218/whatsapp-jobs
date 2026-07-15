@@ -104,14 +104,14 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
       failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
 
       try {
-        jobs.push(...await scrapeBrowserFallback(keyword));
-      } catch (browserError) {
-        browserFailures.push(`${keyword}: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
+        jobs.push(...await scrapeRenderedFallback(keyword));
+      } catch (fallbackError) {
+        fallbackFailures.push(`${keyword}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
 
         try {
-          jobs.push(...await scrapeRenderedFallback(keyword));
-        } catch (fallbackError) {
-          fallbackFailures.push(`${keyword}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+          jobs.push(...await scrapeBrowserFallback(keyword));
+        } catch (browserError) {
+          browserFailures.push(`${keyword}: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
         }
       }
     }

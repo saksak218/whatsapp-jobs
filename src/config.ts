@@ -55,7 +55,7 @@ export const config = {
   dbRetentionDays: envInt("DB_RETENTION_DAYS", 5),
   httpTimeoutMs: envInt("HTTP_TIMEOUT_MS", 30000),
   browserFallbackEnabled: envBool("ENABLE_BROWSER_FALLBACK", true),
-  browserTimeoutMs: envInt("BROWSER_TIMEOUT_MS", 45000),
+  browserTimeoutMs: envInt("BROWSER_TIMEOUT_MS", 15000),
   browserProfileDir: env("BROWSER_PROFILE_DIR", ".cache/browser-profile"),
   jobsNhsUkMaxPages: envInt("JOBS_NHS_UK_MAX_PAGES", 10),
   hscniMaxPages: envInt("HSCNI_MAX_PAGES", 5),
