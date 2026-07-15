@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
-import { uniqueJobsAcrossSources } from "./helpers.js";
+import { filterAllowedLocations, uniqueJobsAcrossSources } from "./helpers.js";
 import { scrapeHealthJobsUk } from "./healthJobsUk.js";
 import { scrapeHscni } from "./hscni.js";
 import { scrapeJobsNhsUk } from "./jobsNhsUk.js";
@@ -25,5 +25,5 @@ export async function scrapeAll(): Promise<NormalizedJob[]> {
     })
   );
 
-  return uniqueJobsAcrossSources(results.flat());
+  return uniqueJobsAcrossSources(filterAllowedLocations(results.flat()));
 }

@@ -4,6 +4,7 @@ import {
   absoluteUrl,
   buildJobId,
   fetchHtml,
+  filterAllowedLocations,
   filterMatchingJobs,
   loadHtml,
   logScraperFailure,
@@ -15,16 +16,18 @@ import type { NormalizedJob } from "./types.js";
 const source = "hscni" as const;
 const baseUrl = "https://jobs.hscni.net";
 
-function buildSearchUrl(keyword: string): string {
+function buildSearchUrl(keyword: string, page = 1): string {
   const url = new URL("/Search", baseUrl);
   url.searchParams.set("SearchCatID", "63");
   url.searchParams.set("keyword", keyword);
+  if (page > 1) url.searchParams.set("page", String(page));
   return url.toString();
 }
 
-function buildCategoryUrl(): string {
+function buildCategoryUrl(page = 1): string {
   const url = new URL("/Search", baseUrl);
   url.searchParams.set("SearchCatID", "63");
+  if (page > 1) url.searchParams.set("page", String(page));
   return url.toString();
 }
 
@@ -74,21 +77,34 @@ function parseHscniPage(html: string, searchUrl: string, keyword: string): Norma
 export async function scrapeHscni(): Promise<NormalizedJob[]> {
   const jobs: NormalizedJob[] = [];
   const failures: string[] = [];
-  const categoryUrl = buildCategoryUrl();
 
-  try {
-    jobs.push(...parseHscniPage(await fetchHtml(categoryUrl), categoryUrl, "Medical & Dental category"));
-  } catch (error) {
-    failures.push(`Medical & Dental category: ${error instanceof Error ? error.message : String(error)}`);
+  for (let page = 1; page <= config.hscniMaxPages; page += 1) {
+    const categoryUrl = buildCategoryUrl(page);
+
+    try {
+      const pageJobs = parseHscniPage(await fetchHtml(categoryUrl), categoryUrl, "Medical & Dental category");
+      if (pageJobs.length === 0) break;
+      jobs.push(...pageJobs);
+      if (pageJobs.length < 20) break;
+    } catch (error) {
+      failures.push(`Medical & Dental category page ${page}: ${error instanceof Error ? error.message : String(error)}`);
+      break;
+    }
   }
 
   for (const keyword of config.searchKeywords) {
-    const searchUrl = buildSearchUrl(keyword);
+    for (let page = 1; page <= config.hscniMaxPages; page += 1) {
+      const searchUrl = buildSearchUrl(keyword, page);
 
-    try {
-      jobs.push(...parseHscniPage(await fetchHtml(searchUrl), searchUrl, keyword));
-    } catch (error) {
-      failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
+      try {
+        const pageJobs = parseHscniPage(await fetchHtml(searchUrl), searchUrl, keyword);
+        if (pageJobs.length === 0) break;
+        jobs.push(...pageJobs);
+        if (pageJobs.length < 20) break;
+      } catch (error) {
+        failures.push(`${keyword} page ${page}: ${error instanceof Error ? error.message : String(error)}`);
+        break;
+      }
     }
   }
 
@@ -96,5 +112,5 @@ export async function scrapeHscni(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some HSCNI keyword searches failed. ${failures.join(" | ")}`));
   }
 
-  return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
 }

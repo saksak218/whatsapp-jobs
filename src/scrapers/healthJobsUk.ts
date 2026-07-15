@@ -4,6 +4,7 @@ import {
   buildJobId,
   fetchFirstHtml,
   fetchRenderedMarkdown,
+  filterAllowedLocations,
   filterMatchingJobs,
   loadHtml,
   logBlockedSourceFallback,
@@ -108,5 +109,5 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some HealthJobsUK rendered fallback searches failed. ${fallbackFailures.join(" | ")}`));
   }
 
-  return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
 }

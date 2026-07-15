@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
 import { request } from "undici";
+import { config } from "../config.js";
 import { logger } from "../utils/logger.js";
 import type { JobSource, NormalizedJob } from "./types.js";
 
@@ -19,8 +20,8 @@ async function fetchWithUndici(url: string): Promise<string> {
       pragma: "no-cache",
       upgradeInsecureRequests: "1",
     },
-    bodyTimeout: 60000,
-    headersTimeout: 60000,
+    bodyTimeout: config.httpTimeoutMs,
+    headersTimeout: config.httpTimeoutMs,
   });
 
   if (response.statusCode === 403 || response.statusCode === 429) {
@@ -169,16 +170,31 @@ function normalizeForMatch(value: string): string {
 
 const defaultMatchPatterns = [
   /\bclinical\s+fellow\b/i,
+  /\bclinical\s+fellowship\b/i,
+  /\bclinical\s+dev(?:elopment)?\s+fellow\b/i,
   /\bjunior\s+clinical\s+fellow\b/i,
   /\bclinical\s+research\s+fellow\b/i,
+  /\bteaching\s+fellow\b/i,
   /\bfoundation\s+(?:house\s+officer|doctor|year)\s*(?:1|one|i)\b/i,
   /\bfoundation\s+(?:house\s+officer|doctor|year)\s*(?:2|two|ii)\b/i,
+  /\blas\s*-\s*fy\s*1\b/i,
+  /\blas\s*-\s*fy\s*2\b/i,
   /\b(?:fho|fy|f)\s*1\b/i,
   /\b(?:fho|fy|f)\s*2\b/i,
   /\bcore\s+trainee\b/i,
+  /\blas\s*-\s*core\s+trainee\b/i,
+  /\blat\s*-\s*core\s+trainee\b/i,
   /\bct\s*1\b/i,
   /\bct\s*2\b/i,
   /\bct\s*1\s*(?:\/|-|and|&)\s*2\b/i,
+];
+
+const blockedLocationPatterns = [
+  /\bjersey\b/i,
+  /\bguernsey\b/i,
+  /\bisle\s+of\s+man\b/i,
+  /\brepublic\s+of\s+ireland\b/i,
+  /\bdublin\b/i,
 ];
 
 export function isExcludedSeniorRole(job: NormalizedJob): boolean {
@@ -199,7 +215,7 @@ export function getMatchingKeywords(
 ): string[] {
   if (isExcludedSeniorRole(job)) return [];
 
-  const searchableText = `${job.title} ${job.employer ?? ""}`;
+  const searchableText = `${job.title} ${job.employer ?? ""} ${job.salary ?? ""}`;
   const haystack = normalizeForMatch(searchableText);
   const configuredMatches = keywords.filter((keyword) => {
     const term = normalizeForMatch(keyword);
@@ -218,6 +234,15 @@ export function filterMatchingJobs(
   keywords: readonly string[],
 ): NormalizedJob[] {
   return jobs.filter((job) => getMatchingKeywords(job, keywords).length > 0);
+}
+
+export function isAllowedUkLocation(job: NormalizedJob): boolean {
+  const searchableText = `${job.location ?? ""} ${job.url}`;
+  return !blockedLocationPatterns.some((pattern) => pattern.test(searchableText));
+}
+
+export function filterAllowedLocations(jobs: NormalizedJob[]): NormalizedJob[] {
+  return jobs.filter(isAllowedUkLocation);
 }
 
 export function logScraperFailure(source: JobSource, error: unknown): void {

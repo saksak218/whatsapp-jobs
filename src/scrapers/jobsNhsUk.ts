@@ -4,6 +4,7 @@ import {
   absoluteUrl,
   buildJobId,
   fetchHtml,
+  filterAllowedLocations,
   filterMatchingJobs,
   loadHtml,
   logScraperFailure,
@@ -93,5 +94,5 @@ export async function scrapeJobsNhsUk(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some NHS Jobs keyword searches failed. ${failures.join(" | ")}`));
   }
 
-  return filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords);
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
 }
