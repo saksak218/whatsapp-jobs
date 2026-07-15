@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { config } from "./config.js";
 import {
+  cleanupSentJobsOlderThan,
   dedupeAndInsert,
   getUnsentJobs,
   markJobSent,
@@ -19,6 +20,20 @@ export interface ScrapeCycleResult {
   newJobs: number;
   pendingJobs: number;
   sentJobs: number;
+}
+
+async function runRetentionCleanup(): Promise<void> {
+  try {
+    const deletedJobs = await cleanupSentJobsOlderThan(config.dbRetentionDays);
+    if (deletedJobs > 0) {
+      logger.info(
+        { deletedJobs, retentionDays: config.dbRetentionDays },
+        "old sent jobs cleaned up",
+      );
+    }
+  } catch (error) {
+    logger.error({ error }, "old sent job cleanup failed");
+  }
 }
 
 export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
@@ -52,6 +67,7 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
 
     if (jobsToSend.length === 0) {
       logger.warn("no new or pending jobs found; skipping WhatsApp send");
+      await runRetentionCleanup();
       return {
         skipped: false,
         scraped: jobs.length,
@@ -83,6 +99,7 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
       await sleep(delayMs);
     }
 
+    await runRetentionCleanup();
     logger.info("scrape cycle finished");
     return {
       skipped: false,

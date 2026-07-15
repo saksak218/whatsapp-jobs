@@ -91,3 +91,17 @@ export async function markJobSent(jobId: string): Promise<void> {
     .set({ sent_at: sql`now()` })
     .where(sql`${seenJobs.job_id} = ${jobId}`);
 }
+
+export async function cleanupSentJobsOlderThan(days: number): Promise<number> {
+  if (days <= 0) return 0;
+
+  const deletedRows = await db
+    .delete(seenJobs)
+    .where(sql`
+      ${seenJobs.sent_at} is not null
+      and ${seenJobs.first_seen} < now() - (${days}::text || ' days')::interval
+    `)
+    .returning({ job_id: seenJobs.job_id });
+
+  return deletedRows.length;
+}

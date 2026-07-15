@@ -187,6 +187,8 @@ const defaultMatchPatterns = [
   /\bct\s*1\b/i,
   /\bct\s*2\b/i,
   /\bct\s*1\s*(?:\/|-|and|&)\s*2\b/i,
+  /\blocally\s+employed\s+doctor\b/i,
+  /\bled\b/i,
 ];
 
 const blockedLocationPatterns = [

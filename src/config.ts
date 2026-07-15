@@ -41,6 +41,7 @@ const defaultSearchKeywords = [
   "Foundation House Officer 2",
   "Foundation Year 2",
   "Core Trainee (CT1/2)",
+  "Locally Employed Doctor",
 ];
 
 export const config = {
@@ -51,7 +52,11 @@ export const config = {
   whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
   searchKeywords: envList("SEARCH_KEYWORDS", defaultSearchKeywords),
   dbConnectTimeoutSeconds: envInt("DB_CONNECT_TIMEOUT_SECONDS", 30),
+  dbRetentionDays: envInt("DB_RETENTION_DAYS", 5),
   httpTimeoutMs: envInt("HTTP_TIMEOUT_MS", 30000),
+  browserFallbackEnabled: envBool("ENABLE_BROWSER_FALLBACK", true),
+  browserTimeoutMs: envInt("BROWSER_TIMEOUT_MS", 45000),
+  browserProfileDir: env("BROWSER_PROFILE_DIR", ".cache/browser-profile"),
   jobsNhsUkMaxPages: envInt("JOBS_NHS_UK_MAX_PAGES", 10),
   hscniMaxPages: envInt("HSCNI_MAX_PAGES", 5),
   nhsScotlandMaxPages: envInt("NHS_SCOTLAND_MAX_PAGES", 8),
