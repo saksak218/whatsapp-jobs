@@ -7,6 +7,7 @@ import {
   filterAllowedLocations,
   filterMatchingJobs,
   fetchFirstHtml,
+  getSearchKeywordsForSource,
   loadHtml,
   logScraperFailure,
   text,
@@ -107,8 +108,9 @@ function parseNhsScotlandCards(
 export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
   const allJobs: NormalizedJob[] = [];
   const failures: string[] = [];
+  const searchKeywords = getSearchKeywordsForSource(source);
 
-  for (const keyword of config.searchKeywords) {
+  for (const keyword of searchKeywords) {
     try {
       const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
       allJobs.push(...parseNhsScotlandCards(html, searchUrl, keyword));
@@ -141,5 +143,5 @@ export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some NHS Scotland keyword searches failed. ${failures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(allJobs), config.searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(allJobs), searchKeywords));
 }

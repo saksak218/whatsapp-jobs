@@ -7,6 +7,7 @@ import {
   fetchRenderedMarkdown,
   filterAllowedLocations,
   filterMatchingJobs,
+  getSearchKeywordsForSource,
   loadHtml,
   logBlockedSourceFallback,
   logScraperFailure,
@@ -94,8 +95,9 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
   const failures: string[] = [];
   const browserFailures: string[] = [];
   const fallbackFailures: string[] = [];
+  const searchKeywords = getSearchKeywordsForSource(source);
 
-  for (const keyword of config.searchKeywords) {
+  for (const keyword of searchKeywords) {
     try {
       const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
       jobs.push(...parseHtmlJobs(html, searchUrl, keyword));
@@ -133,5 +135,5 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some NHSJobs.com rendered fallback searches failed. ${fallbackFailures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), searchKeywords));
 }

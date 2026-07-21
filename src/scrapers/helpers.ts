@@ -169,9 +169,6 @@ function normalizeForMatch(value: string): string {
 }
 
 const defaultMatchPatterns = [
-  /\bclinical\s+fellow\b/i,
-  /\bclinical\s+fellowship\b/i,
-  /\bclinical\s+dev(?:elopment)?\s+fellow\b/i,
   /\bjunior\s+clinical\s+fellow\b/i,
   /\bclinical\s+research\s+fellow\b/i,
   /\bteaching\s+fellow\b/i,
@@ -191,6 +188,14 @@ const defaultMatchPatterns = [
   /\bled\b/i,
 ];
 
+const clinicalFellowMatchPatterns = [
+  /\bclinical\s+fellow\b/i,
+  /\bclinical\s+fellowship\b/i,
+  /\bclinical\s+dev(?:elopment)?\s+fellow\b/i,
+];
+
+const clinicalFellowKeyword = "Clinical Fellow";
+
 const blockedLocationPatterns = [
   /\bjersey\b/i,
   /\bguernsey\b/i,
@@ -202,12 +207,23 @@ const blockedLocationPatterns = [
 export function isExcludedSeniorRole(job: NormalizedJob): boolean {
   const title = job.title.toLowerCase();
   return (
-    (/\bsenior\b/i.test(title) && /\bfellow\b/i.test(title)) ||
+    /\bsenior\b/i.test(title) ||
     /\bsenior\s+clinical\s+fellow\b/i.test(title) ||
     /\bsnr\.?\s+clinical\s+fellow\b/i.test(title) ||
     /\bspec\s*reg\b/i.test(title) ||
     /\bpost\s*-?\s*cct\b/i.test(title) ||
     /\bst\s*[3-8]\+?\b/i.test(title)
+  );
+}
+
+export function getSearchKeywordsForSource(
+  source: JobSource,
+): readonly string[] {
+  if (source === "nhs-scotland") return config.searchKeywords;
+
+  return config.searchKeywords.filter(
+    (keyword) =>
+      normalizeForMatch(keyword) !== normalizeForMatch(clinicalFellowKeyword),
   );
 }
 
@@ -225,6 +241,17 @@ export function getMatchingKeywords(
   });
 
   if (configuredMatches.length > 0) return configuredMatches;
+
+  const allowsClinicalFellow = keywords.some(
+    (keyword) =>
+      normalizeForMatch(keyword) === normalizeForMatch(clinicalFellowKeyword),
+  );
+  if (
+    allowsClinicalFellow &&
+    clinicalFellowMatchPatterns.some((pattern) => pattern.test(searchableText))
+  ) {
+    return ["configured keyword variant"];
+  }
 
   return defaultMatchPatterns.some((pattern) => pattern.test(searchableText))
     ? ["configured keyword variant"]

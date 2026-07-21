@@ -6,6 +6,7 @@ import {
   fetchHtml,
   filterAllowedLocations,
   filterMatchingJobs,
+  getSearchKeywordsForSource,
   loadHtml,
   logScraperFailure,
   text,
@@ -77,6 +78,7 @@ function parseHscniPage(html: string, searchUrl: string, keyword: string): Norma
 export async function scrapeHscni(): Promise<NormalizedJob[]> {
   const jobs: NormalizedJob[] = [];
   const failures: string[] = [];
+  const searchKeywords = getSearchKeywordsForSource(source);
 
   for (let page = 1; page <= config.hscniMaxPages; page += 1) {
     const categoryUrl = buildCategoryUrl(page);
@@ -92,7 +94,7 @@ export async function scrapeHscni(): Promise<NormalizedJob[]> {
     }
   }
 
-  for (const keyword of config.searchKeywords) {
+  for (const keyword of searchKeywords) {
     for (let page = 1; page <= config.hscniMaxPages; page += 1) {
       const searchUrl = buildSearchUrl(keyword, page);
 
@@ -112,5 +114,5 @@ export async function scrapeHscni(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some HSCNI keyword searches failed. ${failures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), searchKeywords));
 }
