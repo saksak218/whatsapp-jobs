@@ -50,6 +50,7 @@ export const config = {
   whatsappGroupJid: env("WHATSAPP_GROUP_JID"),
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
   whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
+  whatsappSenderNumber: env("WHATSAPP_SENDER_NUMBER"),
   searchKeywords: envList("SEARCH_KEYWORDS", defaultSearchKeywords),
   dbConnectTimeoutSeconds: envInt("DB_CONNECT_TIMEOUT_SECONDS", 30),
   dbRetentionDays: envInt("DB_RETENTION_DAYS", 5),

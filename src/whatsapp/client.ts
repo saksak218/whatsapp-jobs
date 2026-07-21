@@ -21,6 +21,15 @@ const authStateDir = path.isAbsolute(config.whatsappAuthDir)
   ? config.whatsappAuthDir
   : path.join(process.cwd(), config.whatsappAuthDir);
 
+function normalizePhoneNumber(value: string | undefined): string | undefined {
+  const normalized = value?.replace(/\D/g, "");
+  return normalized || undefined;
+}
+
+function connectedPhoneNumber(sock: WASocket): string | undefined {
+  return normalizePhoneNumber(sock.user?.id?.split(":")[0]);
+}
+
 async function ensureAuthStateDir(): Promise<void> {
   await fs.mkdir(authStateDir, { recursive: true });
 }
@@ -200,71 +209,145 @@ async function connect(): Promise<WASocket> {
     version: waWebVersion.version,
   });
 
-  const readySocket = waitForSocketOpen(sock);
-
   sock.ev.on("creds.update", saveCreds);
-  sock.ev.on("connection.update", (update) => {
-    logger.info(
-      { connection: update.connection, hasQr: Boolean(update.qr) },
-      "WhatsApp connection update",
-    );
-
-    if (update.qr) {
-      logger.info("scan WhatsApp QR code to authenticate sender number");
-      qrcode.generate(update.qr, { small: true });
-      console.log(
-        "\nQR code printed above. Scan it with WhatsApp on your phone.\n",
-      );
-    }
-
-    if (update.connection === "open") {
-      socket = sock;
-      socketReady = true;
-      resolvedGroupJid = undefined;
-      logger.info("WhatsApp client connected");
-      console.log("WhatsApp connected successfully.");
-    }
-
-    if (update.connection === "close") {
-      const statusCode = (update.lastDisconnect?.error as Boom | undefined)
-        ?.output?.statusCode;
-      const message = update.lastDisconnect?.error?.message ?? "";
-      const disconnectInfo = classifyDisconnect({ statusCode, message });
-
-      socket = undefined;
-      socketReady = false;
-
-      logger.warn(disconnectInfo, "WhatsApp client disconnected");
-
-      if (disconnectInfo.isReplaced) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const startupTimer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
         void cleanupSocket(sock);
-        void clearAuthState();
-        connecting = undefined;
-        logger.warn(
-          "WhatsApp session was replaced; a fresh QR scan is required",
+        reject(new Error("WhatsApp pairing did not complete in time"));
+      }
+    }, 180000);
+
+    const resolveOpenSocket = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(startupTimer);
+      resolve(sock);
+    };
+
+    const rejectStartup = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(startupTimer);
+      void cleanupSocket(sock);
+      reject(error);
+    };
+
+    const reconnectBeforeOpen = () => {
+      void cleanupSocket(sock);
+      connect().then(
+        (reconnectedSocket) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(startupTimer);
+          resolve(reconnectedSocket);
+        },
+        (error: unknown) => {
+          rejectStartup(
+            error instanceof Error
+              ? error
+              : new Error("WhatsApp reconnect failed before startup completed"),
+          );
+        },
+      );
+    };
+
+    sock.ev.on("connection.update", (update) => {
+      logger.info(
+        { connection: update.connection, hasQr: Boolean(update.qr) },
+        "WhatsApp connection update",
+      );
+
+      if (update.qr) {
+        logger.info("scan WhatsApp QR code to authenticate sender number");
+        qrcode.generate(update.qr, { small: true });
+        console.log(
+          "\nQR code printed above. Scan it with WhatsApp on your phone.\n",
         );
-        return;
       }
 
-      if (disconnectInfo.isQrTimeout) {
-        logger.warn(
-          "WhatsApp QR pairing timed out; waiting for a fresh QR scan or manual re-auth",
-        );
-        connecting = undefined;
-        return;
+      if (update.connection === "open") {
+        socket = sock;
+        socketReady = true;
+        resolvedGroupJid = undefined;
+        const expectedSender = normalizePhoneNumber(config.whatsappSenderNumber);
+        const connectedSender = connectedPhoneNumber(sock);
+        if (
+          expectedSender &&
+          connectedSender &&
+          expectedSender !== connectedSender
+        ) {
+          logger.warn(
+            { expectedSender, connectedSender },
+            "Connected WhatsApp sender does not match WHATSAPP_SENDER_NUMBER",
+          );
+        } else if (connectedSender) {
+          logger.info({ connectedSender }, "WhatsApp sender number confirmed");
+        }
+        logger.info("WhatsApp client connected");
+        console.log("WhatsApp connected successfully.");
+        resolveOpenSocket();
       }
 
-      if (disconnectInfo.shouldReconnect) {
-        connecting = connect().catch((error) => {
+      if (update.connection === "close") {
+        const statusCode = (update.lastDisconnect?.error as Boom | undefined)
+          ?.output?.statusCode;
+        const message = update.lastDisconnect?.error?.message ?? "";
+        const disconnectInfo = classifyDisconnect({ statusCode, message });
+
+        socket = undefined;
+        socketReady = false;
+
+        logger.warn(disconnectInfo, "WhatsApp client disconnected");
+
+        if (disconnectInfo.isReplaced) {
+          void cleanupSocket(sock);
+          void clearAuthState();
           connecting = undefined;
-          logger.error({ error }, "WhatsApp reconnect failed");
-          throw error;
-        });
-      }
-    }
-  });
+          logger.warn(
+            "WhatsApp session was replaced; a fresh QR scan is required",
+          );
+          rejectStartup(
+            new Error(
+              "WhatsApp session was replaced; a fresh QR scan is required",
+            ),
+          );
+          return;
+        }
 
-  return readySocket;
+        if (disconnectInfo.isQrTimeout) {
+          logger.warn(
+            "WhatsApp QR pairing timed out; waiting for a fresh QR scan or manual re-auth",
+          );
+          connecting = undefined;
+          rejectStartup(new Error("WhatsApp QR pairing timed out"));
+          return;
+        }
+
+        if (disconnectInfo.shouldReconnect) {
+          if (!settled) {
+            logger.info(
+              disconnectInfo,
+              "WhatsApp restart required before startup completed; reconnecting",
+            );
+            reconnectBeforeOpen();
+            return;
+          }
+
+          connecting = connect().catch((error) => {
+            connecting = undefined;
+            logger.error({ error }, "WhatsApp reconnect failed");
+            throw error;
+          });
+          return;
+        }
+
+        rejectStartup(new Error(`WhatsApp connection closed: ${message}`));
+      }
+    });
+  });
 }
 
 export async function waitForSocketOpen(sock: WASocket): Promise<WASocket> {

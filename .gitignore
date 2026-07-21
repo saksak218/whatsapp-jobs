@@ -3,5 +3,6 @@ dist/
 .env
 .env.local
 auth_info/
+auth_info_*/
 *.log
 npm-debug.log*
