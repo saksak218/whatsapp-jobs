@@ -8,6 +8,7 @@ import {
   mergeJobsForDelivery,
 } from "./dedupe.js";
 import { scrapeAll } from "./scrapers/index.js";
+import { isExcludedSeniorRole } from "./scrapers/helpers.js";
 import { logger } from "./utils/logger.js";
 import { randomDelay, sleep } from "./utils/sleep.js";
 import { sendJobAlert } from "./whatsapp/send.js";
@@ -55,12 +56,15 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
     const jobs = await scrapeAll();
     const newJobs = await dedupeAndInsert(jobs);
     const pendingJobs = await getUnsentJobs();
-    const jobsToSend = mergeJobsForDelivery(newJobs, pendingJobs);
+    const mergedJobs = mergeJobsForDelivery(newJobs, pendingJobs);
+    const jobsToSend = mergedJobs.filter((job) => !isExcludedSeniorRole(job));
+    const excludedSeniorJobs = mergedJobs.length - jobsToSend.length;
     logger.info(
       {
         scraped: jobs.length,
         newJobs: newJobs.length,
         pendingJobs: pendingJobs.length,
+        excludedSeniorJobs,
       },
       "dedupe completed",
     );
