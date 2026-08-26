@@ -69,7 +69,18 @@ export async function fetchFirstHtml(
 export async function fetchRenderedMarkdown(url: string): Promise<string> {
   const target = new URL(url);
   const renderedUrl = `https://r.jina.ai/http://${target.host}${target.pathname}${target.search}${target.hash}`;
-  return fetchHtml(renderedUrl);
+  const response = await fetch(renderedUrl, {
+    headers: {
+      accept: "text/markdown,text/plain;q=0.9,*/*;q=0.8",
+    },
+    signal: AbortSignal.timeout(config.httpTimeoutMs),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GET ${renderedUrl} failed with status ${response.status}`);
+  }
+
+  return response.text();
 }
 
 export function loadHtml(html: string): cheerio.CheerioAPI {
@@ -119,18 +130,24 @@ export function parseRenderedTracJobsMarkdown(
   keyword: string,
 ): NormalizedJob[] {
   const jobs: NormalizedJob[] = [];
-  const basePattern = escapeRegExp(baseUrl);
-  const linkPattern = new RegExp(`\\]\\((${basePattern}/job/[^\\s)]+)(?:\\s+"([^"]+)")?\\)`, "g");
+  const baseHostPattern = escapeRegExp(new URL(baseUrl).host);
+  const linkPattern = new RegExp(
+    `\\]\\((https?://${baseHostPattern}/job/[^\\s)]+)(?:\\s+"([^"]+)")?\\)`,
+    "g",
+  );
 
   for (const line of markdown.split("\n")) {
-    if (!line.includes(`${baseUrl}/job/`)) continue;
+    if (!line.includes("/job/")) continue;
 
     linkPattern.lastIndex = 0;
     let match: RegExpExecArray | null;
 
     while ((match = linkPattern.exec(line)) !== null) {
-      const url = match[1];
-      if (!url) continue;
+      const matchedUrl = match[1];
+      if (!matchedUrl) continue;
+      const parsedUrl = new URL(matchedUrl);
+      parsedUrl.protocol = "https:";
+      const url = parsedUrl.toString();
 
       const titleFromAttribute = match[2]?.trim();
       const titleFromText = cleanMarkdownTitle(line.slice(0, match.index));
@@ -168,33 +185,85 @@ function normalizeForMatch(value: string): string {
     .trim();
 }
 
-const defaultMatchPatterns = [
-  /\bjunior\s+clinical\s+fellow\b/i,
-  /\bclinical\s+research\s+fellow\b/i,
-  /\bteaching\s+fellow\b/i,
-  /\bfoundation\s+(?:house\s+officer|doctor|year)\s*(?:1|one|i)\b/i,
-  /\bfoundation\s+(?:house\s+officer|doctor|year)\s*(?:2|two|ii)\b/i,
-  /\blas\s*-\s*fy\s*1\b/i,
-  /\blas\s*-\s*fy\s*2\b/i,
-  /\b(?:fho|fy|f)\s*1\b/i,
-  /\b(?:fho|fy|f)\s*2\b/i,
-  /\bcore\s+trainee\b/i,
-  /\blas\s*-\s*core\s+trainee\b/i,
-  /\blat\s*-\s*core\s+trainee\b/i,
-  /\bct\s*1\b/i,
-  /\bct\s*2\b/i,
-  /\bct\s*1\s*(?:\/|-|and|&)\s*2\b/i,
-  /\blocally\s+employed\s+doctor\b/i,
-  /\bled\b/i,
+interface LabeledPattern {
+  label: string;
+  pattern: RegExp;
+}
+
+const explicitJuniorTitlePatterns: LabeledPattern[] = [
+  { label: "junior doctor", pattern: /\bjunior\s+(?:clinical\s+fellow|doctor|grade\s+doctor)\b/i },
+  { label: "foundation grade", pattern: /\b(?:foundation(?:\s+(?:year|doctor|house\s+officer))?\s*(?:1|2|one|two)|fho\s*[12]|fy\s*[1-4]|f\s*[1-4])\b/i },
+  { label: "SHO grade", pattern: /\b(?:sho|senior\s+house\s+officer)\b/i },
+  { label: "early specialty grade", pattern: /\b(?:st|ct|imt|cst)\s*(?:1|2)\b/i },
+  { label: "core trainee", pattern: /\bcore\s+(?:surgical\s+)?trainee\b/i },
+  { label: "entry training programme", pattern: /\b(?:accs|gpst\s*1|gp\s+specialty\s+trainee)\b/i },
+  { label: "junior LAS/LAT", pattern: /\b(?:las|lat)\s*-?\s*(?:(?:fy|f|ct|st)\s*)?[12]\b/i },
+  { label: "tier 1 doctor", pattern: /\btier\s*1\b/i },
+  { label: "simulation fellow", pattern: /\bsimulation\s+fellow\b/i },
+  { label: "education fellow", pattern: /\b(?:clinical\s+)?(?:teaching|education|development)\s+fellow\b/i },
+  { label: "academic clinical fellow", pattern: /\bacademic\s+clinical\s+fellow\b/i },
 ];
 
-const clinicalFellowMatchPatterns = [
-  /\bclinical\s+fellow\b/i,
-  /\bclinical\s+fellowship\b/i,
-  /\bclinical\s+dev(?:elopment)?\s+fellow\b/i,
+const ambiguousJuniorTitlePatterns: LabeledPattern[] = [
+  { label: "resident doctor", pattern: /\bresident\s+(?:medical\s+)?doctor\b/i },
+  { label: "resident medical officer", pattern: /\b(?:resident\s+medical\s+officer|rmo)\b/i },
+  { label: "trust doctor", pattern: /\btrust\s+(?:grade\s+)?doctor\b/i },
+  { label: "trust grade", pattern: /\btrust\s+grade\b/i },
+  { label: "locally employed doctor", pattern: /\b(?:locally\s+employed(?:\s+resident)?\s+doctor|led)\b/i },
+  { label: "clinical fellow", pattern: /\bclinical\s+(?:research\s+)?fellow(?:ship)?\b/i },
+  { label: "research fellow", pattern: /\bresearch\s+fellow\b/i },
+  { label: "ward doctor", pattern: /\bward\s+doctor\b/i },
 ];
 
-const clinicalFellowKeyword = "Clinical Fellow";
+const entryLevelTitlePatterns = [
+  /\b(?:foundation(?:\s+(?:year|doctor|house\s+officer))?\s*(?:1|2|one|two)|fho\s*[12]|fy\s*[1-4]|f\s*[1-4])\b/i,
+  /\b(?:sho|senior\s+house\s+officer)\b/i,
+  /\b(?:st|ct|imt|cst)\s*(?:1|2)\b/i,
+  /\bcore\s+(?:surgical\s+)?trainee\b/i,
+  /\b(?:accs|gpst\s*1|gp\s+specialty\s+trainee)\b/i,
+  /\b(?:las|lat)\s*-?\s*(?:(?:fy|f|ct|st)\s*)?[12]\b/i,
+  /\btier\s*1\b/i,
+];
+
+const absoluteSeniorTitlePatterns = [
+  /\b(?:locum\s+)?consultant\b/i,
+  /\bpost\s*-?\s*(?:cct|ccst|cesr)\b/i,
+  /\b(?:specialty|speciality|specialist)\s+doctor\b/i,
+  /\bassociate\s+specialist\b/i,
+  /\bstaff\s+grade\b/i,
+  /\b(?:medical\s+director|chief\s+medical\s+officer)\b/i,
+  /\btraining\s+programme\s+director\b/i,
+  /\b(?:salaried\s+)?general\s+practitioner\b/i,
+  /\bsalaried\s+gp\b/i,
+];
+
+const seniorTitlePatterns = [
+  /\bsenior\b/i,
+  /\b(?:middle|higher)\s+grade\b/i,
+  /\btrust\s+registrar\b/i,
+  /\b(?:specialty|specialist)\s+registrar\b/i,
+  /\bspec\s*reg\b/i,
+  /\bspr\b/i,
+  /\bregistrar\b/i,
+  /\b(?:st|ct|imt|cst)\s*(?:[3-9]|1\d)\+?\b/i,
+  /\b(?:mt\s*0?[4-9]|nodal\s+point\s+(?:[4-9]|1\d))\b/i,
+  /\btier\s*2\b/i,
+];
+
+const strongJuniorEligibilityPatterns = [
+  /\b(?:post|role|position|job)\b[^.]{0,140}\b(?:suitable|aimed|available)\b[^.]{0,140}\b(?:fy|f|st|ct|imt|cst)\s*(?:1|2)\b/i,
+  /\b(?:applicants?|candidates?)\b[^.]{0,180}\b(?:fy|f|st|ct|imt|cst)\s*(?:1|2)\b/i,
+  /\b(?:at|equivalent\s+to)\s+(?:fy|f|st|ct|imt|cst)\s*(?:1|2)\s+(?:equivalent\s+)?level\b/i,
+  /\bsatisfactory\s+completion\b[^.]{0,180}\bfoundation\s+year\s*(?:1|2)\b/i,
+  /\bcompletion\s+of\s+(?:the\s+)?foundation\s+programme\b/i,
+  /\bminimum\s+of\s+(?:one|two|1|2)\s+years?[^.]{0,120}\b(?:internship|fy\s*1|foundation\s+year\s*1)\b/i,
+];
+
+const seniorOnlyEligibilityPatterns = [
+  /\b(?:post|role|position|job)\b[^.]{0,140}\b(?:suitable|aimed|available)\b[^.]{0,140}\b(?:st|ct|imt|cst)\s*(?:[3-9]|1\d)\+?\b/i,
+  /\b(?:st|ct|imt|cst)\s*(?:[3-9]|1\d)\+?\s*(?:equivalent|level)\b/i,
+  /\b(?:applicants?|candidates?)\b[^.]{0,180}\bcompleted?\s+(?:core|internal\s+medicine)\s+training\b/i,
+];
 
 const blockedLocationPatterns = [
   /\bjersey\b/i,
@@ -204,26 +273,96 @@ const blockedLocationPatterns = [
   /\bdublin\b/i,
 ];
 
-export function isExcludedSeniorRole(job: NormalizedJob): boolean {
-  const title = job.title.toLowerCase();
+function isPlainClinicalFellowRestrictedBySource(job: NormalizedJob): boolean {
+  if (job.source === "nhs-scotland") return false;
+
+  const hasEntryGrade = entryLevelTitlePatterns.some((pattern) =>
+    pattern.test(job.title),
+  );
+  const hasSeniorGrade = seniorTitlePatterns.some((pattern) =>
+    pattern.test(job.title),
+  );
   return (
-    /\bsenior\b/i.test(title) ||
-    /\bsenior\s+clinical\s+fellow\b/i.test(title) ||
-    /\bsnr\.?\s+clinical\s+fellow\b/i.test(title) ||
-    /\bspec\s*reg\b/i.test(title) ||
-    /\bpost\s*-?\s*cct\b/i.test(title) ||
-    /\bst\s*[3-8]\+?\b/i.test(title)
+    /\bclinical\s+fellow(?:ship)?\b/i.test(job.title) &&
+    !/\bjunior\s+clinical\s+fellow(?:ship)?\b/i.test(job.title) &&
+    !(hasEntryGrade && !hasSeniorGrade)
+  );
+}
+
+export function isExcludedSeniorRole(job: NormalizedJob): boolean {
+  const title = job.title.replace(/\bsenior\s+house\s+officer\b/gi, "SHO");
+  if (absoluteSeniorTitlePatterns.some((pattern) => pattern.test(title))) return true;
+
+  const hasEntryLevelTitle = entryLevelTitlePatterns.some((pattern) => pattern.test(title));
+  if (
+    !hasEntryLevelTitle &&
+    seniorTitlePatterns.some((pattern) => pattern.test(title))
+  ) {
+    return true;
+  }
+
+  const hasExplicitJuniorTitle = explicitJuniorTitlePatterns.some(({ pattern }) =>
+    pattern.test(title),
+  );
+  if (hasExplicitJuniorTitle) return false;
+
+  const details = job.classification_text ?? "";
+  const hasStrongJuniorEligibility = strongJuniorEligibilityPatterns.some((pattern) =>
+    pattern.test(details),
+  );
+  return (
+    !hasStrongJuniorEligibility &&
+    seniorOnlyEligibilityPatterns.some((pattern) => pattern.test(details))
   );
 }
 
 export function getSearchKeywordsForSource(
   source: JobSource,
 ): readonly string[] {
-  if (source === "nhs-scotland") return config.searchKeywords;
+  if (source === "hscni") return [];
 
-  return config.searchKeywords.filter(
-    (keyword) =>
-      normalizeForMatch(keyword) !== normalizeForMatch(clinicalFellowKeyword),
+  const coreKeywords = [
+    "Resident Doctor",
+    "Trust Doctor",
+    "Trust Grade",
+    "Locally Employed Doctor",
+    "Medical Officer",
+    "Fellow",
+    "Foundation Doctor",
+    "FY2",
+    "SHO",
+    "Core Trainee",
+    "ST1",
+    "LAS",
+  ];
+
+  if (source !== "healthjobsuk") return coreKeywords;
+
+  return [
+    ...coreKeywords,
+    "RMO",
+    "FY1",
+    "FY3",
+    "ST2",
+    "CT1",
+    "CT2",
+    "IMT1",
+    "IMT2",
+    "CST1",
+    "CST2",
+    "LAT",
+    "Tier 1",
+  ];
+}
+
+export function isPotentialJuniorJob(job: NormalizedJob): boolean {
+  if (isExcludedSeniorRole(job)) return false;
+
+  const title = job.title;
+  return (
+    explicitJuniorTitlePatterns.some(({ pattern }) => pattern.test(title)) ||
+    ambiguousJuniorTitlePatterns.some(({ pattern }) => pattern.test(title)) ||
+    /\b(?:doctor|fellow|medical\s+officer)\b/i.test(title)
   );
 }
 
@@ -231,31 +370,35 @@ export function getMatchingKeywords(
   job: NormalizedJob,
   keywords: readonly string[],
 ): string[] {
-  if (isExcludedSeniorRole(job)) return [];
+  if (isPlainClinicalFellowRestrictedBySource(job)) return [];
+  if (!isPotentialJuniorJob(job)) return [];
 
-  const searchableText = `${job.title} ${job.employer ?? ""} ${job.salary ?? ""}`;
-  const haystack = normalizeForMatch(searchableText);
+  const configuredText = `${job.title} ${job.employer ?? ""} ${job.salary ?? ""}`;
+  const haystack = normalizeForMatch(configuredText);
+  const paddedHaystack = ` ${haystack} `;
   const configuredMatches = keywords.filter((keyword) => {
     const term = normalizeForMatch(keyword);
-    return term.length > 0 && haystack.includes(term);
+    return term.length > 0 && paddedHaystack.includes(` ${term} `);
   });
 
   if (configuredMatches.length > 0) return configuredMatches;
 
-  const allowsClinicalFellow = keywords.some(
-    (keyword) =>
-      normalizeForMatch(keyword) === normalizeForMatch(clinicalFellowKeyword),
+  const explicitTitleMatch = explicitJuniorTitlePatterns.find(({ pattern }) =>
+    pattern.test(job.title),
   );
-  if (
-    allowsClinicalFellow &&
-    clinicalFellowMatchPatterns.some((pattern) => pattern.test(searchableText))
-  ) {
-    return ["configured keyword variant"];
+  if (explicitTitleMatch) return [explicitTitleMatch.label];
+
+  const strongEligibilityMatch = strongJuniorEligibilityPatterns.find((pattern) =>
+    pattern.test(job.classification_text ?? ""),
+  );
+  if (strongEligibilityMatch && isPotentialJuniorJob(job)) {
+    return ["junior eligibility in advert details"];
   }
 
-  return defaultMatchPatterns.some((pattern) => pattern.test(searchableText))
-    ? ["configured keyword variant"]
-    : [];
+  const ambiguousTitleMatch = ambiguousJuniorTitlePatterns.find(({ pattern }) =>
+    pattern.test(job.title),
+  );
+  return ambiguousTitleMatch ? [ambiguousTitleMatch.label] : [];
 }
 
 export function filterMatchingJobs(

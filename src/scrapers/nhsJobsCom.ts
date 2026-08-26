@@ -97,7 +97,7 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
   const fallbackFailures: string[] = [];
   const searchKeywords = getSearchKeywordsForSource(source);
 
-  for (const keyword of searchKeywords) {
+  await Promise.all(searchKeywords.map(async (keyword) => {
     try {
       const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
       jobs.push(...parseHtmlJobs(html, searchUrl, keyword));
@@ -116,7 +116,7 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
         }
       }
     }
-  }
+  }));
 
   if (failures.length > 0) {
     const error = new Error(`Some NHSJobs.com keyword searches failed. ${failures.join(" | ")}`);
@@ -135,5 +135,5 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some NHSJobs.com rendered fallback searches failed. ${fallbackFailures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
 }

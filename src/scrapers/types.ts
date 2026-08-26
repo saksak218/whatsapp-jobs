@@ -13,6 +13,8 @@ export interface NormalizedJob {
   location?: string;
   salary?: string;
   url: string;
+  /** Extra advert text used only while classifying a freshly scraped job. */
+  classification_text?: string;
   posted_at?: Date;
   closing_at?: Date;
   raw?: unknown;

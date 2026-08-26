@@ -114,5 +114,5 @@ export async function scrapeHscni(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some HSCNI keyword searches failed. ${failures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
 }

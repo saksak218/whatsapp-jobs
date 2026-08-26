@@ -97,27 +97,29 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
   const browserFailures: string[] = [];
   const fallbackFailures: string[] = [];
   const searchKeywords = getSearchKeywordsForSource(source);
+  const discoveryKeywords = ["", ...searchKeywords];
 
-  for (const keyword of searchKeywords) {
+  await Promise.all(discoveryKeywords.map(async (keyword) => {
+    const searchLabel = keyword || "Medical and Dental category";
     try {
       const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
       jobs.push(...parseHtmlJobs(html, searchUrl, keyword));
     } catch (error) {
-      failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(`${searchLabel}: ${error instanceof Error ? error.message : String(error)}`);
 
       try {
         jobs.push(...await scrapeRenderedFallback(keyword));
       } catch (fallbackError) {
-        fallbackFailures.push(`${keyword}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+        fallbackFailures.push(`${searchLabel}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
 
         try {
           jobs.push(...await scrapeBrowserFallback(keyword));
         } catch (browserError) {
-          browserFailures.push(`${keyword}: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
+          browserFailures.push(`${searchLabel}: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
         }
       }
     }
-  }
+  }));
 
   if (failures.length > 0) {
     const error = new Error(`Some HealthJobsUK keyword searches failed. ${failures.join(" | ")}`);
@@ -136,5 +138,5 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
     logScraperFailure(source, new Error(`Some HealthJobsUK rendered fallback searches failed. ${fallbackFailures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), config.searchKeywords));
 }

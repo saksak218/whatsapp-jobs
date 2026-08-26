@@ -6,9 +6,10 @@ import {
   getUnsentJobs,
   markJobSent,
   mergeJobsForDelivery,
+  suppressUnsentJobs,
 } from "./dedupe.js";
 import { scrapeAll } from "./scrapers/index.js";
-import { isExcludedSeniorRole } from "./scrapers/helpers.js";
+import { getMatchingKeywords } from "./scrapers/helpers.js";
 import { logger } from "./utils/logger.js";
 import { randomDelay, sleep } from "./utils/sleep.js";
 import { sendJobAlert } from "./whatsapp/send.js";
@@ -57,14 +58,33 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
     const newJobs = await dedupeAndInsert(jobs);
     const pendingJobs = await getUnsentJobs();
     const mergedJobs = mergeJobsForDelivery(newJobs, pendingJobs);
-    const jobsToSend = mergedJobs.filter((job) => !isExcludedSeniorRole(job));
-    const excludedSeniorJobs = mergedJobs.length - jobsToSend.length;
+    const eligibleJobs = config.deliveryNotBefore
+      ? mergedJobs.filter(
+          (job) => job.first_seen.getTime() >= config.deliveryNotBefore!.getTime(),
+        )
+      : mergedJobs;
+    const suppressedHistoricalJobs = mergedJobs.length - eligibleJobs.length;
+    const jobsToSend = eligibleJobs
+      .filter(
+        (job) => getMatchingKeywords(job, config.searchKeywords).length > 0,
+      )
+      .sort((left, right) => {
+        const leftTime = left.posted_at?.getTime() ?? left.first_seen.getTime();
+        const rightTime = right.posted_at?.getTime() ?? right.first_seen.getTime();
+        return rightTime - leftTime;
+      });
+    const ineligibleJobs = eligibleJobs.filter(
+      (job) => getMatchingKeywords(job, config.searchKeywords).length === 0,
+    );
+    await suppressUnsentJobs(ineligibleJobs.map((job) => job.job_id));
     logger.info(
       {
         scraped: jobs.length,
         newJobs: newJobs.length,
         pendingJobs: pendingJobs.length,
-        excludedSeniorJobs,
+        deliveryNotBefore: config.deliveryNotBefore?.toISOString(),
+        suppressedHistoricalJobs,
+        suppressedIneligibleJobs: ineligibleJobs.length,
       },
       "dedupe completed",
     );
@@ -82,7 +102,7 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
     }
 
     let sentJobs = 0;
-    for (const job of jobsToSend) {
+    for (const [index, job] of jobsToSend.entries()) {
       let sent = false;
       try {
         sent = await sendJobAlert(job);
@@ -98,6 +118,7 @@ export async function runScrapeCycle(): Promise<ScrapeCycleResult> {
       await markJobSent(job.job_id);
       sentJobs += 1;
 
+      if (index === jobsToSend.length - 1) continue;
       const delayMs = randomDelay(config.sendMinDelayMs, config.sendMaxDelayMs);
       logger.info({ delayMs }, "waiting before next WhatsApp send");
       await sleep(delayMs);

@@ -6,7 +6,7 @@ import {
   fetchHtml,
   filterAllowedLocations,
   filterMatchingJobs,
-  getSearchKeywordsForSource,
+  isPotentialJuniorJob,
   loadHtml,
   logScraperFailure,
   text,
@@ -19,7 +19,7 @@ const baseUrl = "https://www.jobs.nhs.uk";
 
 function buildSearchUrl(keyword: string, page: number): string {
   const url = new URL("/candidate/search/results", baseUrl);
-  url.searchParams.set("keyword", keyword);
+  if (keyword) url.searchParams.set("keyword", keyword);
   url.searchParams.set("staffGroup", "MEDICAL_AND_DENTAL");
   url.searchParams.set("sort", "publicationDateDesc");
   url.searchParams.set("skipPhraseSuggester", "true");
@@ -74,27 +74,75 @@ function parseJobsNhsUkPage(html: string, searchUrl: string): NormalizedJob[] {
   return jobs;
 }
 
-export async function scrapeJobsNhsUk(): Promise<NormalizedJob[]> {
-  const jobs: NormalizedJob[] = [];
+async function enrichWithAdvertDetails(jobs: NormalizedJob[]): Promise<{
+  jobs: NormalizedJob[];
+  failures: string[];
+}> {
+  const candidates = jobs.filter(isPotentialJuniorJob);
   const failures: string[] = [];
-  const searchKeywords = getSearchKeywordsForSource(source);
+  let nextIndex = 0;
 
-  for (const keyword of searchKeywords) {
-    try {
-      for (let page = 1; page <= config.jobsNhsUkMaxPages; page += 1) {
-        const searchUrl = buildSearchUrl(keyword, page);
-        const pageJobs = parseJobsNhsUkPage(await fetchHtml(searchUrl), searchUrl);
-        if (pageJobs.length === 0) break;
-        jobs.push(...pageJobs);
+  async function worker(): Promise<void> {
+    while (nextIndex < candidates.length) {
+      const job = candidates[nextIndex];
+      nextIndex += 1;
+
+      try {
+        const $ = loadHtml(await fetchHtml(job.url));
+        $("script, style, noscript, svg").remove();
+        job.classification_text = text($("main").first()) || text($("body"));
+      } catch (error) {
+        failures.push(`${job.job_id}: ${error instanceof Error ? error.message : String(error)}`);
       }
-    } catch (error) {
-      failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  if (failures.length > 0) {
-    logScraperFailure(source, new Error(`Some NHS Jobs keyword searches failed. ${failures.join(" | ")}`));
+  await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, () => worker()));
+  return { jobs, failures };
+}
+
+export async function scrapeJobsNhsUk(): Promise<NormalizedJob[]> {
+  const jobs: NormalizedJob[] = [];
+  const failures: string[] = [];
+  let nextPage = 1;
+  let lastPage = config.jobsNhsUkMaxPages;
+
+  async function discoveryWorker(): Promise<void> {
+    while (nextPage <= lastPage) {
+      const page = nextPage;
+      nextPage += 1;
+      const searchUrl = buildSearchUrl("", page);
+      try {
+        const pageJobs = parseJobsNhsUkPage(await fetchHtml(searchUrl), searchUrl);
+        if (pageJobs.length === 0) {
+          lastPage = Math.min(lastPage, page - 1);
+          continue;
+        }
+        jobs.push(...pageJobs);
+      } catch (error) {
+        failures.push(`page ${page}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(jobs), searchKeywords));
+  await Promise.all(
+    Array.from(
+      { length: Math.min(5, config.jobsNhsUkMaxPages) },
+      () => discoveryWorker(),
+    ),
+  );
+
+  if (failures.length > 0) {
+    logScraperFailure(source, new Error(`NHS Jobs discovery failed. ${failures.join(" | ")}`));
+  }
+
+  const enriched = await enrichWithAdvertDetails(uniqueJobs(jobs));
+  if (enriched.failures.length > 0) {
+    logScraperFailure(
+      source,
+      new Error(`Some NHS Jobs advert details failed. ${enriched.failures.join(" | ")}`)
+    );
+  }
+
+  return filterAllowedLocations(filterMatchingJobs(enriched.jobs, config.searchKeywords));
 }

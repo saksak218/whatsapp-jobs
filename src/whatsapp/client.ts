@@ -17,6 +17,10 @@ let connecting: Promise<WASocket> | undefined;
 let resolvedGroupJid: string | undefined;
 let socketReady = false;
 
+interface StartWhatsAppOptions {
+  usePairingCode?: boolean;
+}
+
 const authStateDir = path.isAbsolute(config.whatsappAuthDir)
   ? config.whatsappAuthDir
   : path.join(process.cwd(), config.whatsappAuthDir);
@@ -34,14 +38,34 @@ async function ensureAuthStateDir(): Promise<void> {
   await fs.mkdir(authStateDir, { recursive: true });
 }
 
-async function clearAuthState(): Promise<void> {
+function authBackupSuffix(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+async function archiveAuthState(reason: string): Promise<string | undefined> {
   try {
-    await fs.rm(authStateDir, { recursive: true, force: true });
+    const entries = await fs.readdir(authStateDir).catch(() => []);
+    if (entries.length === 0) {
+      await ensureAuthStateDir();
+      return undefined;
+    }
+
+    const backupDir = `${authStateDir}_${reason}_${authBackupSuffix()}`;
+    await fs.rename(authStateDir, backupDir);
     await ensureAuthStateDir();
-    logger.info("Cleared stale WhatsApp auth state");
+    logger.warn(
+      { reason, backupDir: path.basename(backupDir) },
+      "Archived invalid WhatsApp auth state before fresh pairing",
+    );
+    return backupDir;
   } catch (error) {
-    logger.warn({ error }, "Failed to clear WhatsApp auth state");
+    logger.error({ error, reason }, "Failed to archive WhatsApp auth state");
+    throw error;
   }
+}
+
+export async function resetWhatsAppAuthForPairing(): Promise<void> {
+  await archiveAuthState("manual-repair");
 }
 
 async function cleanupSocket(sock?: WASocket): Promise<void> {
@@ -59,6 +83,7 @@ export interface DisconnectClassification {
   statusCode?: number;
   message: string;
   isReplaced: boolean;
+  isLoggedOut: boolean;
   isQrTimeout: boolean;
   shouldReconnect: boolean;
 }
@@ -76,22 +101,27 @@ export function classifyDisconnect(input: {
     message.includes("replaced");
   const isQrTimeout =
     statusCode === 408 || message.includes("QR refs attempts ended");
+  const isLoggedOut =
+    statusCode === 401 || statusCode === DisconnectReason.loggedOut;
 
   return {
     statusCode,
     message,
     isReplaced,
+    isLoggedOut,
     isQrTimeout,
     shouldReconnect:
-      !isReplaced && !isQrTimeout && statusCode !== DisconnectReason.loggedOut,
+      !isReplaced && !isLoggedOut && !isQrTimeout,
   };
 }
 
-export async function startWhatsAppClient(): Promise<WASocket> {
+export async function startWhatsAppClient(
+  options: StartWhatsAppOptions = {},
+): Promise<WASocket> {
   if (socket) return socket;
   if (connecting) return connecting;
 
-  connecting = connect();
+  connecting = connect(options);
   try {
     const connectedSocket = await connecting;
     connecting = undefined;
@@ -108,6 +138,15 @@ export function getWhatsAppClient(): WASocket {
   }
 
   return socket;
+}
+
+export async function closeWhatsAppClient(): Promise<void> {
+  const activeSocket = socket;
+  socket = undefined;
+  socketReady = false;
+  connecting = undefined;
+  resolvedGroupJid = undefined;
+  await cleanupSocket(activeSocket);
 }
 
 export async function listParticipatingGroups(): Promise<
@@ -191,7 +230,7 @@ export async function resolveWhatsAppGroupJid(): Promise<string> {
   );
 }
 
-async function connect(): Promise<WASocket> {
+async function connect(options: StartWhatsAppOptions = {}): Promise<WASocket> {
   await ensureAuthStateDir();
   const { state, saveCreds } = await useMultiFileAuthState(authStateDir);
   const waWebVersion = await fetchLatestWaWebVersion().catch(() => ({
@@ -204,7 +243,9 @@ async function connect(): Promise<WASocket> {
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
-    logger,
+    // Baileys includes protocol and key material in some info/debug logs.
+    // Keep its internal logger quiet while retaining our redacted lifecycle logs.
+    logger: logger.child({ component: "baileys" }, { level: "warn" }),
     browser: Browsers.ubuntu("NHS Jobs Alerts"),
     version: waWebVersion.version,
   });
@@ -212,6 +253,7 @@ async function connect(): Promise<WASocket> {
   sock.ev.on("creds.update", saveCreds);
   return new Promise((resolve, reject) => {
     let settled = false;
+    let pairingCodeTimer: NodeJS.Timeout | undefined;
     const startupTimer = setTimeout(() => {
       if (!settled) {
         settled = true;
@@ -224,6 +266,7 @@ async function connect(): Promise<WASocket> {
       if (settled) return;
       settled = true;
       clearTimeout(startupTimer);
+      if (pairingCodeTimer) clearTimeout(pairingCodeTimer);
       resolve(sock);
     };
 
@@ -231,13 +274,15 @@ async function connect(): Promise<WASocket> {
       if (settled) return;
       settled = true;
       clearTimeout(startupTimer);
+      if (pairingCodeTimer) clearTimeout(pairingCodeTimer);
       void cleanupSocket(sock);
       reject(error);
     };
 
     const reconnectBeforeOpen = () => {
+      if (pairingCodeTimer) clearTimeout(pairingCodeTimer);
       void cleanupSocket(sock);
-      connect().then(
+      connect(options).then(
         (reconnectedSocket) => {
           if (settled) return;
           settled = true;
@@ -254,13 +299,45 @@ async function connect(): Promise<WASocket> {
       );
     };
 
-    sock.ev.on("connection.update", (update) => {
+    if (options.usePairingCode && !state.creds.registered) {
+      const senderNumber = normalizePhoneNumber(config.whatsappSenderNumber);
+      if (!senderNumber) {
+        rejectStartup(
+          new Error(
+            "WHATSAPP_SENDER_NUMBER is required for pairing-code authentication",
+          ),
+        );
+        return;
+      }
+
+      pairingCodeTimer = setTimeout(() => {
+        void sock.requestPairingCode(senderNumber).then(
+          (code) => {
+            const readableCode = code.match(/.{1,4}/g)?.join("-") ?? code;
+            logger.info("WhatsApp pairing code generated");
+            console.log(`\nWhatsApp pairing code: ${readableCode}`);
+            console.log(
+              "On the sender phone: WhatsApp > Linked devices > Link a device > Link with phone number.\n",
+            );
+          },
+          (error: unknown) => {
+            rejectStartup(
+              error instanceof Error
+                ? error
+                : new Error("Failed to generate WhatsApp pairing code"),
+            );
+          },
+        );
+      }, 3000);
+    }
+
+    sock.ev.on("connection.update", async (update) => {
       logger.info(
         { connection: update.connection, hasQr: Boolean(update.qr) },
         "WhatsApp connection update",
       );
 
-      if (update.qr) {
+      if (update.qr && !options.usePairingCode) {
         logger.info("scan WhatsApp QR code to authenticate sender number");
         qrcode.generate(update.qr, { small: true });
         console.log(
@@ -302,18 +379,32 @@ async function connect(): Promise<WASocket> {
 
         logger.warn(disconnectInfo, "WhatsApp client disconnected");
 
-        if (disconnectInfo.isReplaced) {
+        if (disconnectInfo.isReplaced || disconnectInfo.isLoggedOut) {
           void cleanupSocket(sock);
-          void clearAuthState();
           connecting = undefined;
-          logger.warn(
-            "WhatsApp session was replaced; a fresh QR scan is required",
-          );
-          rejectStartup(
-            new Error(
-              "WhatsApp session was replaced; a fresh QR scan is required",
-            ),
-          );
+          const reason = disconnectInfo.isReplaced ? "replaced" : "logged-out";
+
+          try {
+            await archiveAuthState(reason);
+          } catch (error) {
+            rejectStartup(
+              error instanceof Error
+                ? error
+                : new Error("Failed to reset invalid WhatsApp auth state"),
+            );
+            return;
+          }
+
+          logger.warn({ reason }, "Fresh WhatsApp pairing is required");
+          if (!settled) {
+            reconnectBeforeOpen();
+          } else {
+            connecting = connect(options).catch((error) => {
+              connecting = undefined;
+              logger.error({ error }, "WhatsApp re-pairing failed");
+              throw error;
+            });
+          }
           return;
         }
 
@@ -336,7 +427,7 @@ async function connect(): Promise<WASocket> {
             return;
           }
 
-          connecting = connect().catch((error) => {
+          connecting = connect(options).catch((error) => {
             connecting = undefined;
             logger.error({ error }, "WhatsApp reconnect failed");
             throw error;

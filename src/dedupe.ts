@@ -1,6 +1,6 @@
-import { isNull, sql } from "drizzle-orm";
+import { and, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "./db/client.js";
-import { seenJobs } from "./db/schema.js";
+import { ignoredJobs, seenJobs } from "./db/schema.js";
 import type { NormalizedJob } from "./scrapers/types.js";
 
 export interface SeenJob extends NormalizedJob {
@@ -58,8 +58,18 @@ export async function dedupeAndInsert(
   jobs: NormalizedJob[],
 ): Promise<SeenJob[]> {
   const newJobs: SeenJob[] = [];
+  const jobIds = [...new Set(jobs.map((job) => job.job_id))];
+  const ignoredRows = jobIds.length
+    ? await db
+        .select({ job_id: ignoredJobs.job_id })
+        .from(ignoredJobs)
+        .where(inArray(ignoredJobs.job_id, jobIds))
+    : [];
+  const ignoredIds = new Set(ignoredRows.map((row) => row.job_id));
 
   for (const job of jobs) {
+    if (ignoredIds.has(job.job_id)) continue;
+
     const inserted = await db
       .insert(seenJobs)
       .values({
@@ -90,6 +100,22 @@ export async function markJobSent(jobId: string): Promise<void> {
     .update(seenJobs)
     .set({ sent_at: sql`now()` })
     .where(sql`${seenJobs.job_id} = ${jobId}`);
+}
+
+export async function suppressUnsentJobs(jobIds: string[]): Promise<void> {
+  const uniqueIds = [...new Set(jobIds)];
+  if (uniqueIds.length === 0) return;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(ignoredJobs)
+      .values(uniqueIds.map((jobId) => ({ job_id: jobId })))
+      .onConflictDoNothing();
+
+    await tx
+      .delete(seenJobs)
+      .where(and(isNull(seenJobs.sent_at), inArray(seenJobs.job_id, uniqueIds)));
+  });
 }
 
 export async function cleanupSentJobsOlderThan(days: number): Promise<number> {

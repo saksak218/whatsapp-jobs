@@ -23,6 +23,18 @@ function envBool(name: string, fallback: boolean): boolean {
   return raw ? trueValues.has(raw.toLowerCase()) : fallback;
 }
 
+function envDate(name: string): Date | undefined {
+  const raw = env(name);
+  if (!raw) return undefined;
+
+  const value = new Date(raw);
+  if (Number.isNaN(value.getTime())) {
+    throw new Error(`${name} must be a valid ISO-8601 date`);
+  }
+
+  return value;
+}
+
 function envList(name: string, fallback: string[]): string[] {
   const raw = env(name);
   if (!raw) return fallback;
@@ -34,15 +46,29 @@ function envList(name: string, fallback: string[]): string[] {
 }
 
 const defaultSearchKeywords = [
-  "Clinical Fellow",
-  "Junior Clinical Fellow",
-  "Clinical Research Fellow",
-  "Foundation House officer 1",
-  "Foundation House Officer 2",
-  "Foundation Year 2",
-  "Core Trainee (CT1/2)",
+  "Resident Doctor",
+  "Trust Doctor",
+  "Trust Grade Doctor",
   "Locally Employed Doctor",
+  "Junior Clinical Fellow",
+  "Clinical Fellow",
+  "Clinical Research Fellow",
+  "Clinical Teaching Fellow",
+  "Clinical Development Fellow",
+  "Simulation Fellow",
+  "Foundation Doctor",
+  "Foundation Year 1",
+  "Foundation Year 2",
+  "FY3",
+  "SHO",
+  "Core Trainee",
+  "ST1",
 ];
+
+function mergedSearchKeywords(): string[] {
+  const configured = envList("SEARCH_KEYWORDS", []);
+  return [...new Set([...defaultSearchKeywords, ...configured])];
+}
 
 export const config = {
   isVercel: envBool("VERCEL", false),
@@ -51,20 +77,21 @@ export const config = {
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
   whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
   whatsappSenderNumber: env("WHATSAPP_SENDER_NUMBER"),
-  searchKeywords: envList("SEARCH_KEYWORDS", defaultSearchKeywords),
+  searchKeywords: mergedSearchKeywords(),
   dbConnectTimeoutSeconds: envInt("DB_CONNECT_TIMEOUT_SECONDS", 30),
-  dbRetentionDays: envInt("DB_RETENTION_DAYS", 5),
+  dbRetentionDays: envInt("DB_RETENTION_DAYS", 60),
+  deliveryNotBefore: envDate("DELIVERY_NOT_BEFORE"),
   httpTimeoutMs: envInt("HTTP_TIMEOUT_MS", 30000),
   browserFallbackEnabled: envBool("ENABLE_BROWSER_FALLBACK", true),
   browserTimeoutMs: envInt("BROWSER_TIMEOUT_MS", 15000),
   browserProfileDir: env("BROWSER_PROFILE_DIR", ".cache/browser-profile"),
-  jobsNhsUkMaxPages: envInt("JOBS_NHS_UK_MAX_PAGES", 10),
+  jobsNhsUkMaxPages: envInt("JOBS_NHS_UK_MAX_PAGES", 20),
   hscniMaxPages: envInt("HSCNI_MAX_PAGES", 5),
   nhsScotlandMaxPages: envInt("NHS_SCOTLAND_MAX_PAGES", 8),
-  scrapeIntervalCron: env("SCRAPE_INTERVAL_CRON", "*/10 * * * *"),
+  scrapeIntervalCron: env("SCRAPE_INTERVAL_CRON", "*/2 * * * *"),
   logLevel: env("LOG_LEVEL", "info"),
-  sendMinDelayMs: envInt("SEND_MIN_DELAY_MS", 8000),
-  sendMaxDelayMs: envInt("SEND_MAX_DELAY_MS", 15000),
+  sendMinDelayMs: envInt("SEND_MIN_DELAY_MS", 3000),
+  sendMaxDelayMs: envInt("SEND_MAX_DELAY_MS", 6000),
   dryRunSends: envBool("DRY_RUN_SENDS", false),
   disableWhatsAppSends: envBool(
     "DISABLE_WHATSAPP_SENDS",

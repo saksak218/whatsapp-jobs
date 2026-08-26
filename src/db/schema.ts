@@ -23,3 +23,10 @@ export const seenJobs = pgTable(
     sentAtIndex: index("idx_seen_jobs_sent_at").on(table.sent_at),
   }),
 );
+
+export const ignoredJobs = pgTable("ignored_jobs", {
+  job_id: text("job_id").primaryKey(),
+  ignored_at: timestamp("ignored_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});

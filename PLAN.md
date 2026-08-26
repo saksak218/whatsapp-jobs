@@ -569,20 +569,27 @@ done and verified.
 - [x] Implement `scrapeAll()` to run sources in parallel.
 - [x] Add scraper test command that prints normalized results without DB writes.
 - [x] Add scraper structure and normalization logic; live-site selector verification remains the next refinement step.
+- [x] Replace NHS Jobs keyword-only discovery with the newest 20 pages of the
+      Medical & Dental category and advert-detail eligibility checks.
+- [x] Add comprehensive junior doctor title/grade matching with regression
+      coverage for FY, SHO, ST1/2, trust/resident/locally employed doctors,
+      and clinical/teaching/simulation fellows.
 
 ### Phase 5 - WhatsApp Integration
 
-- [ ] Create or choose the dedicated WhatsApp sender number.
-- [ ] Create the WhatsApp group.
+- [x] Create or choose the dedicated WhatsApp sender number.
+- [x] Create the WhatsApp group.
 - [ ] Set group messaging permission to admins only.
-- [ ] Add sender number to the group.
+- [x] Add sender number to the group.
 - [ ] Make sender number an admin.
 - [x] Implement Baileys client connection.
 - [x] Persist auth state in `auth_info/`.
 - [x] Log QR code for first authentication.
-- [ ] Find and set `WHATSAPP_GROUP_JID`.
+- [x] Recover from incomplete/logged-out auth state and provide a phone-number
+      pairing-code command without deleting the previous session backup.
+- [x] Find and set `WHATSAPP_GROUP_JID`.
 - [x] Implement `sendJobAlert(job)`.
-- [ ] Send one manual test message to the group.
+- [x] Send one manual test message to the group.
 
 ### Phase 6 - Cron Pipeline
 
@@ -595,20 +602,21 @@ done and verified.
 - [x] Ensure one send failure is logged and does not corrupt dedupe state.
 - [x] Ensure one WhatsApp send failure leaves the job pending and does not abort
       the remaining send loop.
-- [x] The pipeline code is implemented; the final end-to-end run still needs a live WhatsApp session and a real scrape result.
+- [x] Verify the pipeline end to end with a live WhatsApp session and real job
+      deliveries from Oracle.
 
 ### Phase 7 - Deployment
 
-- [ ] Provision always-on VM.
-- [ ] Install Node.js 20+, git, and pm2.
-- [ ] Configure production `.env`.
-- [ ] Run database migrations.
-- [ ] Build app.
-- [ ] Start app with pm2 or systemd.
-- [ ] Authenticate WhatsApp by QR code.
-- [ ] Confirm `auth_info/` persists across restart.
-- [ ] Confirm scheduled scrape runs in production.
-- [ ] Confirm new jobs post to WhatsApp.
+- [x] Provision always-on VM.
+- [x] Install Node.js 20+, git, and pm2.
+- [x] Configure production `.env`.
+- [x] Run database migrations.
+- [x] Build app.
+- [x] Start app with pm2.
+- [x] Authenticate WhatsApp by QR code.
+- [x] Confirm `auth_info/` persists across restart.
+- [x] Confirm scheduled scrape starts in production.
+- [x] Confirm real jobs post to WhatsApp from Oracle.
 
 ### Phase 8 - Hardening
 
@@ -617,7 +625,18 @@ done and verified.
 - [ ] Add alerting for WhatsApp disconnect/logout.
 - [ ] Add polite backoff if a source starts blocking requests.
 - [ ] Add include/exclude keyword rules if needed.
-- [ ] Add a small admin/status command or script if useful.
+- [x] Add a small read-only status command for pending WhatsApp deliveries.
+- [x] Add controlled backlog pruning/sending and a suppression ledger so
+      deleted active listings cannot be rediscovered as new.
+- [x] Re-check pending jobs at delivery time and archive ineligible false
+      positives before WhatsApp sending.
+- [x] Restrict ungraded plain `Clinical Fellow` alerts to NHS Scotland while
+      allowing explicitly junior ST1/ST2 clinical fellows from every source.
+- [x] Reduce production polling from ten minutes to two minutes.
+- [x] Parallelize independent source pages and keyword searches so alert
+      delivery is not held behind minutes of serial network requests.
+- [x] Repair rendered trac.jobs parsing for HTTP job links and verify the live
+      HealthJobsUK scrape completes in seconds without browser fallback.
 
 ## 17. Immediate Next Step
 

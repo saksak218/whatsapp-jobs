@@ -110,16 +110,16 @@ export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
   const failures: string[] = [];
   const searchKeywords = getSearchKeywordsForSource(source);
 
-  for (const keyword of searchKeywords) {
+  await Promise.all(searchKeywords.map(async (keyword) => {
     try {
       const { html, url: searchUrl } = await fetchFirstHtml(buildSearchUrls(keyword));
       allJobs.push(...parseNhsScotlandCards(html, searchUrl, keyword));
     } catch (error) {
       failures.push(`${keyword}: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }
+  }));
 
-  for (const band of relevantSalaryBands) {
+  await Promise.all(relevantSalaryBands.map(async (band) => {
     for (let page = 0; page < config.nhsScotlandMaxPages; page += 1) {
       const skip = page * pageSize;
       const searchUrl = buildSalaryBandUrl(band.id, skip);
@@ -137,11 +137,11 @@ export async function scrapeNhsScotland(): Promise<NormalizedJob[]> {
         break;
       }
     }
-  }
+  }));
 
   if (failures.length > 0) {
     logScraperFailure(source, new Error(`Some NHS Scotland keyword searches failed. ${failures.join(" | ")}`));
   }
 
-  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(allJobs), searchKeywords));
+  return filterAllowedLocations(filterMatchingJobs(uniqueJobs(allJobs), config.searchKeywords));
 }
