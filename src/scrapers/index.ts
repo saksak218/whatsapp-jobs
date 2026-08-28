@@ -8,6 +8,37 @@ import { scrapeNhsJobsCom } from "./nhsJobsCom.js";
 import { scrapeNhsScotland } from "./nhsScotland.js";
 import type { NormalizedJob, Scraper } from "./types.js";
 
+async function runScraper(
+  name: string,
+  scraper: Scraper,
+): Promise<NormalizedJob[]> {
+  let timeout: NodeJS.Timeout | undefined;
+
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(
+          new Error(
+            `${name} scraper timed out after ${config.scraperTimeoutMs}ms`,
+          ),
+        );
+      }, config.scraperTimeoutMs);
+    });
+
+    const jobs = await Promise.race([scraper(), timeoutPromise]);
+    logger.info({ source: name, count: jobs.length }, "scraper completed");
+    return jobs;
+  } catch (error) {
+    logger.error(
+      { source: name, error, timeoutMs: config.scraperTimeoutMs },
+      "scraper failed; continuing with other sources",
+    );
+    return [];
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export async function scrapeAll(): Promise<NormalizedJob[]> {
   const scrapers: Array<[string, Scraper]> = [];
 
@@ -18,11 +49,7 @@ export async function scrapeAll(): Promise<NormalizedJob[]> {
   if (config.sources.hscni) scrapers.push(["hscni", scrapeHscni]);
 
   const results = await Promise.all(
-    scrapers.map(async ([name, scraper]) => {
-      const jobs = await scraper();
-      logger.info({ source: name, count: jobs.length }, "scraper completed");
-      return jobs;
-    })
+    scrapers.map(([name, scraper]) => runScraper(name, scraper)),
   );
 
   return uniqueJobsAcrossSources(filterAllowedLocations(results.flat()));
