@@ -24,11 +24,10 @@ async function fetchWithUndici(url: string): Promise<string> {
     headersTimeout: config.httpTimeoutMs,
   });
 
-  if (response.statusCode === 403 || response.statusCode === 429) {
-    throw new Error(`GET ${url} failed with status ${response.statusCode}`);
-  }
-
   if (response.statusCode < 200 || response.statusCode >= 300) {
+    // Undici requires callers to consume or destroy every response body.
+    // Leaving blocked/error bodies unread leaks sockets and active handles.
+    await response.body.dump().catch(() => undefined);
     throw new Error(`GET ${url} failed with status ${response.statusCode}`);
   }
 
