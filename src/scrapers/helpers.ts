@@ -72,6 +72,8 @@ export async function fetchRenderedMarkdown(url: string): Promise<string> {
   const response = await fetch(renderedUrl, {
     headers: {
       accept: "text/markdown,text/plain;q=0.9,*/*;q=0.8",
+      "x-no-cache": "true",
+      "x-cache-tolerance": "0",
     },
     signal: AbortSignal.timeout(config.httpTimeoutMs),
   });

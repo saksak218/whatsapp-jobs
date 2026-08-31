@@ -108,15 +108,17 @@ export async function scrapeNhsJobsCom(): Promise<NormalizedJob[]> {
         jobs.push(...await scrapeRenderedFallback(keyword));
       } catch (fallbackError) {
         fallbackFailures.push(`${keyword}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-
-        try {
-          jobs.push(...await scrapeBrowserFallback(keyword));
-        } catch (browserError) {
-          browserFailures.push(`${keyword}: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
-        }
       }
     }
   }));
+
+  if (jobs.length === 0 && config.browserFallbackEnabled) {
+    try {
+      jobs.push(...await scrapeBrowserFallback(""));
+    } catch (browserError) {
+      browserFailures.push(browserError instanceof Error ? browserError.message : String(browserError));
+    }
+  }
 
   if (failures.length > 0) {
     const error = new Error(`Some NHSJobs.com keyword searches failed. ${failures.join(" | ")}`);

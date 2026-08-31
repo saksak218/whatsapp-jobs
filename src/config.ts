@@ -82,7 +82,6 @@ export const config = {
   dbRetentionDays: envInt("DB_RETENTION_DAYS", 60),
   deliveryNotBefore: envDate("DELIVERY_NOT_BEFORE"),
   httpTimeoutMs: envInt("HTTP_TIMEOUT_MS", 30000),
-  scraperTimeoutMs: envInt("SCRAPER_TIMEOUT_MS", 90000),
   browserFallbackEnabled: envBool("ENABLE_BROWSER_FALLBACK", true),
   browserTimeoutMs: envInt("BROWSER_TIMEOUT_MS", 15000),
   browserProfileDir: env("BROWSER_PROFILE_DIR", ".cache/browser-profile"),

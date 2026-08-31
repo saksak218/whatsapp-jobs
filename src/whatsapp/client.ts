@@ -99,8 +99,10 @@ export function classifyDisconnect(input: {
     statusCode === DisconnectReason.connectionReplaced ||
     message.includes("conflict") ||
     message.includes("replaced");
+  const normalizedMessage = message.toLowerCase();
   const isQrTimeout =
-    statusCode === 408 || message.includes("QR refs attempts ended");
+    normalizedMessage.includes("qr refs attempts ended") ||
+    normalizedMessage.includes("qr pairing timed out");
   const isLoggedOut =
     statusCode === 401 || statusCode === DisconnectReason.loggedOut;
 

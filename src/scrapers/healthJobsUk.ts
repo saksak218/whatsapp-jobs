@@ -111,15 +111,17 @@ export async function scrapeHealthJobsUk(): Promise<NormalizedJob[]> {
         jobs.push(...await scrapeRenderedFallback(keyword));
       } catch (fallbackError) {
         fallbackFailures.push(`${searchLabel}: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
-
-        try {
-          jobs.push(...await scrapeBrowserFallback(keyword));
-        } catch (browserError) {
-          browserFailures.push(`${searchLabel}: ${browserError instanceof Error ? browserError.message : String(browserError)}`);
-        }
       }
     }
   }));
+
+  if (jobs.length === 0 && config.browserFallbackEnabled) {
+    try {
+      jobs.push(...await scrapeBrowserFallback(""));
+    } catch (browserError) {
+      browserFailures.push(browserError instanceof Error ? browserError.message : String(browserError));
+    }
+  }
 
   if (failures.length > 0) {
     const error = new Error(`Some HealthJobsUK keyword searches failed. ${failures.join(" | ")}`);

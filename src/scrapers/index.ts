@@ -8,34 +8,14 @@ import { scrapeNhsJobsCom } from "./nhsJobsCom.js";
 import { scrapeNhsScotland } from "./nhsScotland.js";
 import type { NormalizedJob, Scraper } from "./types.js";
 
-async function runScraper(
-  name: string,
-  scraper: Scraper,
-): Promise<NormalizedJob[]> {
-  let timeout: NodeJS.Timeout | undefined;
-
+async function runScraper(name: string, scraper: Scraper): Promise<NormalizedJob[]> {
   try {
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeout = setTimeout(() => {
-        reject(
-          new Error(
-            `${name} scraper timed out after ${config.scraperTimeoutMs}ms`,
-          ),
-        );
-      }, config.scraperTimeoutMs);
-    });
-
-    const jobs = await Promise.race([scraper(), timeoutPromise]);
+    const jobs = await scraper();
     logger.info({ source: name, count: jobs.length }, "scraper completed");
     return jobs;
   } catch (error) {
-    logger.error(
-      { source: name, error, timeoutMs: config.scraperTimeoutMs },
-      "scraper failed; continuing with other sources",
-    );
+    logger.error({ source: name, error }, "scraper failed; continuing with other sources");
     return [];
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
 }
 
