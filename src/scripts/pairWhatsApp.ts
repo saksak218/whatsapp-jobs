@@ -3,6 +3,7 @@ import {
   closeWhatsAppClient,
   resetWhatsAppAuthForPairing,
   startWhatsAppClient,
+  waitForWhatsAppAuthPersisted,
   waitForSocketOpen,
 } from "../whatsapp/client.js";
 
@@ -15,6 +16,7 @@ if (!config.whatsappSenderNumber) {
 await resetWhatsAppAuthForPairing();
 const sock = await startWhatsAppClient({ usePairingCode: true });
 await waitForSocketOpen(sock);
+await waitForWhatsAppAuthPersisted();
 
 const groups = await sock.groupFetchAllParticipating();
 const entries = Object.entries(groups ?? {});

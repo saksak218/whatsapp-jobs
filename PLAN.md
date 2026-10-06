@@ -637,6 +637,11 @@ done and verified.
       delivery is not held behind minutes of serial network requests.
 - [x] Repair rendered trac.jobs parsing for HTTP job links and verify the live
       HealthJobsUK scrape completes in seconds without browser fallback.
+- [x] Remove the hosted database compute bottleneck by supporting local
+      PostgreSQL on the Oracle VM, batch dedupe inserts, and document a safe
+      baseline cutover that cannot flood the WhatsApp group with old listings.
+- [x] Add selective replay of suppressed, dated vacancies after a database
+      outage and verify a recovered real job is acknowledged by WhatsApp.
 
 ## 17. Immediate Next Step
 

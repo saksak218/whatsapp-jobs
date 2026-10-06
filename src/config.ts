@@ -73,6 +73,7 @@ function mergedSearchKeywords(): string[] {
 export const config = {
   isVercel: envBool("VERCEL", false),
   databaseUrl: env("DATABASE_URL"),
+  databaseSsl: env("DATABASE_SSL", "auto").toLowerCase(),
   whatsappGroupJid: env("WHATSAPP_GROUP_JID"),
   whatsappGroupName: env("WHATSAPP_GROUP_NAME"),
   whatsappAuthDir: env("WHATSAPP_AUTH_DIR", "auth_info"),
@@ -129,6 +130,10 @@ export function requireWhatsAppGroupJid(): string {
 
 export function validateRuntimeConfig(): void {
   requireDatabaseUrl();
+
+  if (!["auto", "require", "disable"].includes(config.databaseSsl)) {
+    throw new Error("DATABASE_SSL must be one of: auto, require, disable");
+  }
 
   if (config.sendMinDelayMs > config.sendMaxDelayMs) {
     throw new Error(

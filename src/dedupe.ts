@@ -57,8 +57,10 @@ export async function getUnsentJobs(): Promise<SeenJob[]> {
 export async function dedupeAndInsert(
   jobs: NormalizedJob[],
 ): Promise<SeenJob[]> {
-  const newJobs: SeenJob[] = [];
-  const jobIds = [...new Set(jobs.map((job) => job.job_id))];
+  const uniqueJobs = Array.from(
+    new Map(jobs.map((job) => [job.job_id, job])).values(),
+  );
+  const jobIds = uniqueJobs.map((job) => job.job_id);
   const ignoredRows = jobIds.length
     ? await db
         .select({ job_id: ignoredJobs.job_id })
@@ -66,13 +68,14 @@ export async function dedupeAndInsert(
         .where(inArray(ignoredJobs.job_id, jobIds))
     : [];
   const ignoredIds = new Set(ignoredRows.map((row) => row.job_id));
+  const insertableJobs = uniqueJobs.filter((job) => !ignoredIds.has(job.job_id));
 
-  for (const job of jobs) {
-    if (ignoredIds.has(job.job_id)) continue;
+  if (insertableJobs.length === 0) return [];
 
-    const inserted = await db
-      .insert(seenJobs)
-      .values({
+  const inserted = await db
+    .insert(seenJobs)
+    .values(
+      insertableJobs.map((job) => ({
         job_id: job.job_id,
         source: job.source,
         title: job.title,
@@ -83,16 +86,12 @@ export async function dedupeAndInsert(
         posted_at: nullableDate(job.posted_at),
         closing_at: nullableDate(job.closing_at),
         raw: job.raw ? JSON.stringify(job.raw) : null,
-      })
-      .onConflictDoNothing()
-      .returning();
+      })),
+    )
+    .onConflictDoNothing()
+    .returning();
 
-    if (inserted[0]) {
-      newJobs.push(rowToSeenJob(inserted[0] as Record<string, unknown>));
-    }
-  }
-
-  return newJobs;
+  return inserted.map((row) => rowToSeenJob(row as Record<string, unknown>));
 }
 
 export async function markJobSent(jobId: string): Promise<void> {

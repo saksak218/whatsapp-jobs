@@ -151,6 +151,29 @@ export async function closeWhatsAppClient(): Promise<void> {
   await cleanupSocket(activeSocket);
 }
 
+export async function waitForWhatsAppAuthPersisted(
+  timeoutMs = 10_000,
+): Promise<void> {
+  const credsPath = path.join(authStateDir, "creds.json");
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      const persisted = JSON.parse(await fs.readFile(credsPath, "utf8")) as {
+        registered?: boolean;
+      };
+      if (persisted.registered === true) return;
+    } catch {
+      // creds.update writes asynchronously; retry while the file is absent or
+      // temporarily incomplete rather than exiting mid-write.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error("WhatsApp credentials were not persisted after pairing");
+}
+
 export async function listParticipatingGroups(): Promise<
   Array<{ id: string; subject: string }>
 > {
@@ -248,7 +271,9 @@ async function connect(options: StartWhatsAppOptions = {}): Promise<WASocket> {
     // Baileys includes protocol and key material in some info/debug logs.
     // Keep its internal logger quiet while retaining our redacted lifecycle logs.
     logger: logger.child({ component: "baileys" }, { level: "warn" }),
-    browser: Browsers.ubuntu("NHS Jobs Alerts"),
+    // Pairing-code registration is stricter than normal QR/session login and
+    // rejects non-canonical companion display names with an unusable code.
+    browser: Browsers.ubuntu("Chrome"),
     version: waWebVersion.version,
   });
 

@@ -13,6 +13,7 @@
     "status": "tsx src/scripts/status.ts",
     "pending:prune": "tsx src/scripts/prunePending.ts",
     "pending:send": "tsx src/scripts/sendPending.ts",
+    "suppressed:replay": "tsx src/scripts/replaySuppressedSince.ts",
     "listings:baseline": "tsx src/scripts/suppressCurrentListings.ts",
     "db:migrate": "tsx src/scripts/migrate.ts",
     "whatsapp:test": "tsx src/scripts/testWhatsApp.ts",
